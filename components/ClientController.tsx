@@ -1,0 +1,254 @@
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { Room, YutResult, ThrowRequest } from '../types';
+import { useMotionDetector } from '../hooks/useMotionDetector';
+import { throwYut } from '../yutLogic';
+
+interface ClientControllerProps {
+  room: Room;
+  playerId: string;
+  onSubmitResult: (result: YutResult) => Promise<void>;
+  onLeave: () => void;
+}
+
+// 윷 결과를 한글로 표시
+const getYutResultLabel = (result: YutResult): string => {
+  switch (result) {
+    case YutResult.DO: return '도';
+    case YutResult.GAE: return '개';
+    case YutResult.GEOL: return '걸';
+    case YutResult.YUT: return '윷';
+    case YutResult.MO: return '모';
+    case YutResult.BACK_DO: return '빽도';
+    default: return result;
+  }
+};
+
+const ClientController: React.FC<ClientControllerProps> = ({
+  room,
+  playerId,
+  onSubmitResult,
+  onLeave
+}) => {
+  const { motionState, requestPermission, startDetecting, stopDetecting, onThrowDetected } = useMotionDetector();
+  const [lastResult, setLastResult] = useState<YutResult | null>(null);
+  const [isMyTurn, setIsMyTurn] = useState(false);
+  const [throwMode, setThrowMode] = useState<'motion' | 'button'>('button');
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const currentPlayer = room.players?.[playerId];
+  const myTeamIndex = currentPlayer?.teamIndex ?? -1;
+  const throwRequest = room.throwRequest;
+
+  // 내 차례인지 확인
+  useEffect(() => {
+    if (throwRequest && throwRequest.teamIndex === myTeamIndex) {
+      setIsMyTurn(true);
+      setLastResult(null);
+    } else {
+      setIsMyTurn(false);
+    }
+  }, [throwRequest, myTeamIndex]);
+
+  // 모션 감지 결과 처리
+  useEffect(() => {
+    onThrowDetected((result) => {
+      handleThrowResult(result);
+    });
+  }, []);
+
+  const handleThrowResult = useCallback(async (result: YutResult) => {
+    setLastResult(result);
+    setIsAnimating(true);
+
+    // 애니메이션 후 결과 전송
+    setTimeout(async () => {
+      await onSubmitResult(result);
+      setIsAnimating(false);
+      setIsMyTurn(false);
+    }, 1500);
+  }, [onSubmitResult]);
+
+  // 버튼으로 던지기
+  const handleButtonThrow = () => {
+    if (!isMyTurn || isAnimating) return;
+
+    setIsAnimating(true);
+    setTimeout(() => {
+      const { result } = throwYut();
+      handleThrowResult(result);
+    }, 600);
+  };
+
+  // 모션으로 던지기 시작
+  const handleStartMotionThrow = async () => {
+    if (!isMyTurn || isAnimating) return;
+
+    if (!motionState.hasPermission) {
+      const granted = await requestPermission();
+      if (!granted) {
+        alert('모션 센서 권한이 필요합니다. 버튼 모드를 사용해주세요.');
+        setThrowMode('button');
+        return;
+      }
+    }
+
+    startDetecting();
+  };
+
+  const teamSettings = (room as any)?.teamSettings || [];
+  const myTeam = teamSettings[myTeamIndex];
+  const currentTurnTeam = room.gameState?.teams?.[room.gameState.currentTeamIndex];
+
+  return (
+    <div className="min-h-screen flex flex-col bg-stone-100">
+      {/* 헤더 */}
+      <div className="bg-white p-4 shadow-md">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            {myTeam && (
+              <div
+                className="w-6 h-6 rounded-full border-2 border-white shadow"
+                style={{ backgroundColor: myTeam.color }}
+              />
+            )}
+            <span className="font-bold">{currentPlayer?.name}</span>
+          </div>
+          <button
+            onClick={onLeave}
+            className="text-sm text-stone-400 hover:text-red-500"
+          >
+            나가기
+          </button>
+        </div>
+      </div>
+
+      {/* 메인 컨텐츠 */}
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        {isMyTurn ? (
+          // 내 차례
+          <div className="w-full max-w-sm">
+            {isAnimating && lastResult ? (
+              // 결과 표시
+              <div className="text-center animate-bounce">
+                <div className="text-8xl font-black mb-4" style={{ color: myTeam?.color }}>
+                  {getYutResultLabel(lastResult)}
+                </div>
+                <p className="text-stone-500">결과 전송 중...</p>
+              </div>
+            ) : motionState.isDetecting ? (
+              // 모션 감지 중
+              <div className="text-center">
+                <div className="w-32 h-32 mx-auto mb-6 rounded-full bg-green-100 border-4 border-green-500 flex items-center justify-center animate-pulse">
+                  <span className="text-4xl">📱</span>
+                </div>
+                <p className="text-xl font-bold text-green-600 mb-2">휴대폰을 흔드세요!</p>
+                <p className="text-stone-500 text-sm mb-6">위아래로 힘차게 던지는 동작을 하세요</p>
+                <button
+                  onClick={stopDetecting}
+                  className="px-6 py-2 bg-stone-200 text-stone-600 rounded-xl"
+                >
+                  취소
+                </button>
+              </div>
+            ) : (
+              // 던지기 선택
+              <div className="text-center">
+                <p className="text-2xl font-black mb-2" style={{ color: myTeam?.color }}>
+                  당신의 차례입니다!
+                </p>
+                <p className="text-stone-500 mb-8">윷을 던져주세요</p>
+
+                {/* 모드 선택 */}
+                <div className="flex gap-2 mb-6">
+                  <button
+                    onClick={() => setThrowMode('button')}
+                    className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
+                      throwMode === 'button'
+                        ? 'bg-stone-800 text-white'
+                        : 'bg-stone-100 text-stone-500'
+                    }`}
+                  >
+                    버튼
+                  </button>
+                  <button
+                    onClick={() => setThrowMode('motion')}
+                    className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
+                      throwMode === 'motion'
+                        ? 'bg-stone-800 text-white'
+                        : 'bg-stone-100 text-stone-500'
+                    }`}
+                  >
+                    모션
+                  </button>
+                </div>
+
+                {throwMode === 'button' ? (
+                  <button
+                    onClick={handleButtonThrow}
+                    className="w-full py-8 bg-gradient-to-b from-stone-700 to-stone-900 text-white text-2xl font-black rounded-3xl shadow-xl active:scale-95 transition-transform"
+                  >
+                    윷 던지기
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStartMotionThrow}
+                    className="w-full py-8 bg-gradient-to-b from-green-500 to-green-700 text-white text-2xl font-black rounded-3xl shadow-xl active:scale-95 transition-transform"
+                  >
+                    {motionState.hasPermission ? '준비 완료 - 탭하세요' : '모션 권한 허용'}
+                  </button>
+                )}
+
+                {throwMode === 'motion' && !motionState.isSupported && (
+                  <p className="mt-4 text-sm text-red-500">
+                    이 기기는 모션 센서를 지원하지 않습니다
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          // 다른 팀 차례
+          <div className="text-center">
+            <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-stone-200 flex items-center justify-center">
+              <span className="text-4xl">⏳</span>
+            </div>
+            <p className="text-xl font-bold text-stone-600 mb-2">
+              대기 중
+            </p>
+            {currentTurnTeam && (
+              <p className="text-stone-500">
+                <span style={{ color: currentTurnTeam.color, fontWeight: 'bold' }}>
+                  {currentTurnTeam.name}
+                </span> 팀의 차례입니다
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 게임 상태 미니뷰 */}
+      {room.gameState && (
+        <div className="bg-white p-4 border-t border-stone-200">
+          <div className="flex justify-around">
+            {room.gameState.teams.map((team, idx) => (
+              <div key={team.id} className="text-center">
+                <div
+                  className={`w-8 h-8 mx-auto rounded-full border-2 ${
+                    room.gameState?.currentTeamIndex === idx
+                      ? 'border-stone-800 scale-110'
+                      : 'border-transparent opacity-60'
+                  }`}
+                  style={{ backgroundColor: team.color }}
+                />
+                <p className="text-xs mt-1 text-stone-500">{team.finishedCount}/4</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ClientController;

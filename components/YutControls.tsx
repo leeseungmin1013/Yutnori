@@ -8,16 +8,17 @@ interface YutControlsProps {
   onThrow: () => void;
   isThrowing: boolean;
   isGameOver: boolean;
+  canThrow: boolean;
 }
 
-const YutControls: React.FC<YutControlsProps> = ({ 
-  currentTeam, 
-  throwBuffer, 
-  onThrow, 
+const YutControls: React.FC<YutControlsProps> = ({
+  currentTeam,
+  throwBuffer,
+  onThrow,
   isThrowing,
-  isGameOver
+  isGameOver,
+  canThrow
 }) => {
-  const canThrow = !isGameOver && (throwBuffer.length === 0 || throwBuffer.some(r => r === YutResult.YUT || r === YutResult.MO));
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-xl border border-stone-200 flex flex-col gap-6">
