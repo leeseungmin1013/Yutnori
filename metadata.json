@@ -1,0 +1,5 @@
+{
+  "name": "Traditional Korean Yutnori",
+  "description": "A real-time, multi-player traditional Korean board game built with React, TypeScript, and Firebase for seamless synchronization.",
+  "requestFramePermissions": []
+}
