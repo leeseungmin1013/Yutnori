@@ -2,10 +2,12 @@
 import React, { useState } from 'react';
 import { GameState, YutResult, Piece } from '../types';
 import { BOARD_NODES } from '../boardData';
+import { canPieceMove } from '../gameEngine';
 
 interface BoardProps {
   gameState: GameState;
   onPieceMove: (pieceId: string, result: YutResult) => void;
+  onSkipResult?: (result: YutResult) => void;
 }
 
 // 윷 결과를 한글로 표시
@@ -21,22 +23,42 @@ const getYutResultLabel = (result: YutResult): string => {
   }
 };
 
-const Board: React.FC<BoardProps> = ({ gameState, onPieceMove }) => {
+const Board: React.FC<BoardProps> = ({ gameState, onPieceMove, onSkipResult }) => {
   const currentTeam = gameState.teams[gameState.currentTeamIndex];
-  const resultsAvailable = gameState.throwBuffer;
+  const resultsAvailable = gameState.throwBuffer || [];
 
   // 선택된 말과 결과 선택 모달 상태
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
+  const [selectedPiece, setSelectedPiece] = useState<Piece | null>(null);
 
-  const handlePieceClick = (pieceId: string) => {
+  // 특정 결과로 이동 가능한 말이 있는지 확인
+  const hasMovablePieceForResult = (result: YutResult): boolean => {
+    return currentTeam.pieces.some(p => !p.isFinished && canPieceMove(p, result));
+  };
+
+  // 특정 말이 특정 결과로 이동 가능한지 확인
+  const canPieceMoveWithResult = (piece: Piece, result: YutResult): boolean => {
+    return canPieceMove(piece, result);
+  };
+
+  // 말이 이동 가능한 결과 목록 필터링
+  const getMovableResults = (piece: Piece): YutResult[] => {
+    return resultsAvailable.filter(result => canPieceMoveWithResult(piece, result));
+  };
+
+  const handlePieceClick = (pieceId: string, piece: Piece) => {
     if (resultsAvailable.length === 0) return;
 
-    if (resultsAvailable.length === 1) {
-      // 결과가 하나면 바로 이동
-      onPieceMove(pieceId, resultsAvailable[0]);
+    const movableResults = getMovableResults(piece);
+    if (movableResults.length === 0) return; // 이동 가능한 결과가 없음
+
+    if (movableResults.length === 1) {
+      // 이동 가능한 결과가 하나면 바로 이동
+      onPieceMove(pieceId, movableResults[0]);
     } else {
       // 여러 결과가 있으면 선택 모달 표시
       setSelectedPieceId(pieceId);
+      setSelectedPiece(piece);
     }
   };
 
@@ -44,12 +66,18 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove }) => {
     if (selectedPieceId) {
       onPieceMove(selectedPieceId, result);
       setSelectedPieceId(null);
+      setSelectedPiece(null);
     }
   };
 
   const closeModal = () => {
     setSelectedPieceId(null);
+    setSelectedPiece(null);
   };
+
+  // 스킵할 결과가 있는지 확인 (이동 가능한 말이 없는 결과)
+  const unskippableResults = resultsAvailable.filter(r => hasMovablePieceForResult(r));
+  const skippableResults = resultsAvailable.filter(r => !hasMovablePieceForResult(r));
 
   return (
     <div className="relative aspect-square w-full max-w-[600px] bg-stone-200 rounded-[2.5rem] p-4 shadow-inner border-8 border-stone-300">
@@ -116,16 +144,17 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove }) => {
             if (!node) return null;
 
             const isCurrentTeam = team.id === currentTeam.id;
-            const isSelectable = isCurrentTeam && resultsAvailable.length > 0;
+            const movableResults = getMovableResults(pieces[0]);
+            const canMove = isCurrentTeam && movableResults.length > 0;
 
             return (
               <g
                 key={`${team.id}-${nodeId}`}
-                className="cursor-pointer"
-                onClick={() => isSelectable && handlePieceClick(pieces[0].id)}
+                className={canMove ? "cursor-pointer" : ""}
+                onClick={() => canMove && handlePieceClick(pieces[0].id, pieces[0])}
               >
                 {/* 호버 효과용 바깥 원 */}
-                {isSelectable && (
+                {canMove && (
                   <circle
                     cx={node.x}
                     cy={node.y}
@@ -170,25 +199,26 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove }) => {
         {gameState.teams.map(team => {
           const waitingPieces = team.pieces.filter(p => p.nodeIndex === null && !p.isFinished);
           const isCurrentTeam = team.id === currentTeam.id;
-          const isSelectable = isCurrentTeam && resultsAvailable.length > 0;
 
           return (
             <div key={team.id} className="flex flex-col items-center gap-2">
               <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">{team.name} 대기</span>
               <div className="flex gap-2 bg-white/70 p-3 rounded-xl border border-stone-200 shadow-sm">
-                {waitingPieces.length > 0 ? waitingPieces.map(p => (
-                  <button
-                    key={p.id}
-                    disabled={!isSelectable}
-                    onClick={() => handlePieceClick(p.id)}
-                    className={`w-9 h-9 rounded-full border-2 border-white shadow-md transition-all flex items-center justify-center font-black text-white text-xs ${
-                      isSelectable ? 'hover:scale-110 active:scale-95 hover:brightness-110 cursor-pointer' : 'opacity-40 cursor-not-allowed'
-                    }`}
-                    style={{ backgroundColor: team.color }}
-                  >
-                    {waitingPieces.length > 1 ? '' : ''}
-                  </button>
-                )) : (
+                {waitingPieces.length > 0 ? waitingPieces.map(p => {
+                  const movableResults = getMovableResults(p);
+                  const canMove = isCurrentTeam && movableResults.length > 0;
+                  return (
+                    <button
+                      key={p.id}
+                      disabled={!canMove}
+                      onClick={() => handlePieceClick(p.id, p)}
+                      className={`w-9 h-9 rounded-full border-2 border-white shadow-md transition-all flex items-center justify-center font-black text-white text-xs ${
+                        canMove ? 'hover:scale-110 active:scale-95 hover:brightness-110 cursor-pointer' : 'opacity-40 cursor-not-allowed'
+                      }`}
+                      style={{ backgroundColor: team.color }}
+                    />
+                  );
+                }) : (
                   <div className="w-9 h-9 flex items-center justify-center text-xs text-stone-300 font-bold">-</div>
                 )}
               </div>
@@ -200,8 +230,28 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove }) => {
         })}
       </div>
 
+      {/* Skip Button - 이동 가능한 말이 없는 결과가 있을 때 표시 */}
+      {skippableResults.length > 0 && onSkipResult && (
+        <div className="absolute -bottom-32 left-0 right-0 flex justify-center">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col items-center gap-2">
+            <p className="text-xs text-amber-700">이동 가능한 말이 없습니다:</p>
+            <div className="flex gap-2">
+              {skippableResults.map((result, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => onSkipResult(result)}
+                  className="px-3 py-1 bg-amber-500 text-white rounded-lg text-sm font-bold hover:bg-amber-600"
+                >
+                  {getYutResultLabel(result)} 스킵
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Result Selection Modal */}
-      {selectedPieceId && resultsAvailable.length > 1 && (
+      {selectedPieceId && selectedPiece && (
         <div
           className="absolute inset-0 bg-black/40 rounded-[2.5rem] flex items-center justify-center z-30"
           onClick={closeModal}
@@ -212,7 +262,7 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove }) => {
           >
             <h3 className="text-lg font-bold text-center mb-4 text-stone-700">어떤 결과를 사용할까요?</h3>
             <div className="flex gap-3 flex-wrap justify-center">
-              {resultsAvailable.map((result, idx) => (
+              {getMovableResults(selectedPiece).map((result, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleResultSelect(result)}

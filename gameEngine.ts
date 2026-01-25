@@ -4,6 +4,23 @@ import { getYutDistance } from './yutLogic';
 import { getNextNode, getPrevNode, isNodeBeforeFinish } from './boardData';
 
 /**
+ * 특정 말이 주어진 윷 결과로 이동 가능한지 확인
+ */
+export const canPieceMove = (
+  piece: Piece,
+  yutResult: YutResult
+): boolean => {
+  const distance = getYutDistance(yutResult);
+
+  // 0번(START)에 있는 말은 '도'(1칸)로만 골인 가능, 다른 결과로는 이동 불가
+  if (piece.nodeIndex === 0 && distance !== 1 && distance !== -1) {
+    return false;
+  }
+
+  return true;
+};
+
+/**
  * 말 이동 로직 (순수 함수)
  */
 export const calculateMove = (
@@ -68,16 +85,11 @@ export const calculateMove = (
       currentNodeId = null;
       newState.logs.push(`${currentTeam.name} 팀이 '도'로 골인!`);
     }
-    // 0번에 있는데 '도'가 아니면 계속 진행 (다시 한 바퀴)
+    // 0번에 있는데 '도'가 아니면 이동 불가 (이 함수가 호출되면 안 됨, 안전장치)
     else if (currentNodeId === 0 && distance > 1) {
-      for (let i = 0; i < distance; i++) {
-        const isFirstStep = (i === 0);
-        const { nextId, newPath } = getNextNode(currentNodeId!, isFirstStep, currentPath);
-        if (nextId === null) break;
-        currentNodeId = nextId;
-        currentPath = newPath;
-      }
-      newState.logs.push(`${currentTeam.name} 팀의 말이 START를 지나 계속 이동합니다.`);
+      // 이동하지 않음 - canPieceMove에서 걸러져야 하지만 안전장치로 유지
+      newState.logs.push(`${currentTeam.name} 팀의 말은 '도'로만 골인할 수 있습니다.`);
+      return { updatedGameState: newState, caughtEnemy: false, isFinished: false };
     }
 
     // 일반 이동
@@ -86,11 +98,11 @@ export const calculateMove = (
         const isFirstStep = (i === 0);
         const { nextId, newPath } = getNextNode(currentNodeId!, isFirstStep, currentPath);
 
-        // 19번이나 28번에서 0으로 가면 0번에 도착 (아직 골인 아님)
-        if (nextId === 0 && isNodeBeforeFinish(currentNodeId!)) {
-          currentNodeId = 0;
-          currentPath = 'outer';
-          newState.logs.push(`${currentTeam.name} 팀의 말이 START에 도착! 다음에 '도'가 나와야 골인합니다.`);
+        // 0번(홈)에 도달하거나 지나치면 골인
+        if (nextId === 0) {
+          isFinished = true;
+          currentNodeId = null;
+          newState.logs.push(`${currentTeam.name} 팀의 말이 골인했습니다!`);
           break;
         }
 

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { YutResult, GameState, Team, GameMode } from './types';
 import { throwYut, isExtraTurnResult } from './yutLogic';
-import { calculateMove } from './gameEngine';
+import { calculateMove, canPieceMove } from './gameEngine';
 import Board from './components/Board';
 import YutControls from './components/YutControls';
 import GameLog from './components/GameLog';
@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [isThrowing, setIsThrowing] = useState(false);
   const [canThrowAgain, setCanThrowAgain] = useState(false);
+  const [usedExtraThrow, setUsedExtraThrow] = useState(false); // 추가 던지기 사용 여부
 
   const firebase = useFirebaseRoom();
 
@@ -117,19 +118,20 @@ const App: React.FC = () => {
   };
 
   // 던지기 결과 처리 (호스트/로컬 공통)
-  const handleThrowResult = useCallback((result: YutResult) => {
+  const handleThrowResult = useCallback((result: YutResult, isExtraThrow: boolean = false) => {
     if (!gameState) return;
 
     const hasExtraTurn = isExtraTurnResult(result);
 
-    if (hasExtraTurn) {
+    // 윷/모가 나왔고, 아직 추가 던지기를 사용하지 않은 경우에만 추가 던지기 허용
+    if (hasExtraTurn && !isExtraThrow) {
       setCanThrowAgain(true);
     }
 
     setGameState(prev => {
       if (!prev) return prev;
       const newBuffer = [...(prev.throwBuffer || []), result];
-      const extraMsg = hasExtraTurn ? ' 한 번 더 던지세요!' : '';
+      const extraMsg = (hasExtraTurn && !isExtraThrow) ? ' 한 번 더 던지세요!' : '';
 
       const newState = {
         ...prev,
@@ -140,8 +142,8 @@ const App: React.FC = () => {
       // 호스트 모드면 Firebase 업데이트
       if (gameMode === 'host') {
         firebase.updateGameState(newState);
-        // 추가 던지기 요청
-        if (hasExtraTurn) {
+        // 추가 던지기 요청 (아직 추가 던지기를 사용하지 않은 경우만)
+        if (hasExtraTurn && !isExtraThrow) {
           firebase.requestThrow(prev.currentTeamIndex);
         }
       }
@@ -156,21 +158,79 @@ const App: React.FC = () => {
   const handleLocalThrow = () => {
     if (!gameState || gameState.isGameOver || isThrowing) return;
 
-    const canThrow = gameState.throwBuffer.length === 0 || canThrowAgain;
+    const bufferLength = gameState.throwBuffer?.length ?? 0;
+    const canThrow = bufferLength === 0 || canThrowAgain;
     if (!canThrow) return;
+
+    // 추가 던지기를 사용하는 경우인지 확인
+    const isUsingExtraThrow = canThrowAgain && bufferLength > 0;
 
     setIsThrowing(true);
     setCanThrowAgain(false);
 
     setTimeout(() => {
       const { result } = throwYut();
-      handleThrowResult(result);
+      handleThrowResult(result, isUsingExtraThrow);
     }, 600);
+  };
+
+  // 특정 결과로 이동 가능한 말이 있는지 확인
+  const hasMovablePiece = useCallback((result: YutResult): boolean => {
+    if (!gameState) return false;
+    const currentTeam = gameState.teams[gameState.currentTeamIndex];
+    return currentTeam.pieces.some(p => !p.isFinished && canPieceMove(p, result));
+  }, [gameState]);
+
+  // 결과 스킵 (이동 가능한 말이 없을 때)
+  const handleSkipResult = (result: YutResult) => {
+    if (!gameState) return;
+
+    const newBuffer = [...(gameState.throwBuffer || [])];
+    const resultIndex = newBuffer.indexOf(result);
+    if (resultIndex > -1) {
+      newBuffer.splice(resultIndex, 1);
+    }
+
+    let nextTeamIndex = gameState.currentTeamIndex;
+    const newLogs = [...(gameState.logs || [])];
+    newLogs.push(`'${result}'로 이동할 수 있는 말이 없어 스킵합니다.`);
+
+    // 버퍼가 비었고 추가 던지기도 없으면 턴 넘김
+    if (newBuffer.length === 0 && !canThrowAgain) {
+      nextTeamIndex = (gameState.currentTeamIndex + 1) % gameState.teams.length;
+      newLogs.push(`${gameState.teams[nextTeamIndex].name} 팀의 차례입니다.`);
+      setCanThrowAgain(false);
+    }
+
+    const newState = {
+      ...gameState,
+      currentTeamIndex: nextTeamIndex,
+      throwBuffer: newBuffer,
+      logs: newLogs,
+      lastUpdate: Date.now()
+    };
+
+    setGameState(newState);
+
+    if (gameMode === 'host') {
+      firebase.updateGameState(newState);
+      if (newBuffer.length === 0 && !canThrowAgain) {
+        firebase.requestThrow(nextTeamIndex);
+      }
+    }
   };
 
   // 말 이동 (호스트/로컬 공통)
   const handlePieceMove = (pieceId: string, result: YutResult) => {
     if (!gameState || gameState.isGameOver) return;
+
+    // 이동 가능 여부 확인
+    const currentTeam = gameState.teams[gameState.currentTeamIndex];
+    const piece = currentTeam.pieces.find(p => p.id === pieceId);
+    if (piece && !canPieceMove(piece, result)) {
+      // 이 말은 이 결과로 이동할 수 없음
+      return;
+    }
 
     const { updatedGameState, caughtEnemy } = calculateMove(gameState, pieceId, result);
 
@@ -207,7 +267,7 @@ const App: React.FC = () => {
       firebase.updateGameState(newState);
 
       if (!newState.isGameOver && newBuffer.length === 0) {
-        const needsThrow = canThrowAgain || caughtEnemy || (newBuffer.length === 0);
+        const needsThrow = canThrowAgain || caughtEnemy;
         if (needsThrow) {
           firebase.requestThrow(nextTeamIndex);
         }
@@ -413,6 +473,7 @@ const App: React.FC = () => {
             <Board
               gameState={gameState}
               onPieceMove={handlePieceMove}
+              onSkipResult={handleSkipResult}
             />
           </div>
 
