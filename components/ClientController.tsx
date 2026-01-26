@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Room, YutResult, ThrowRequest } from '../types';
+import { Room, YutResult } from '../types';
 import { useMotionDetector } from '../hooks/useMotionDetector';
 import { throwYut } from '../yutLogic';
 
@@ -31,10 +31,10 @@ const ClientController: React.FC<ClientControllerProps> = ({
   onLeave
 }) => {
   const { motionState, requestPermission, startDetecting, stopDetecting, onThrowDetected } = useMotionDetector();
-  const [lastResult, setLastResult] = useState<YutResult | null>(null);
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [throwMode, setThrowMode] = useState<'motion' | 'button'>('button');
-  const [isAnimating, setIsAnimating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [effectResult, setEffectResult] = useState<YutResult | null>(null);
 
   const currentPlayer = room.players?.[playerId];
   const myTeamIndex = currentPlayer?.teamIndex ?? -1;
@@ -44,7 +44,6 @@ const ClientController: React.FC<ClientControllerProps> = ({
   useEffect(() => {
     if (throwRequest && throwRequest.teamIndex === myTeamIndex) {
       setIsMyTurn(true);
-      setLastResult(null);
     } else {
       setIsMyTurn(false);
     }
@@ -55,34 +54,41 @@ const ClientController: React.FC<ClientControllerProps> = ({
     onThrowDetected((result) => {
       handleThrowResult(result);
     });
-  }, []);
+  }, [onThrowDetected]); // onThrowDetected를 의존성 배열에 추가
 
   const handleThrowResult = useCallback(async (result: YutResult) => {
-    setLastResult(result);
-    setIsAnimating(true);
+    setIsSubmitting(true);
+    setEffectResult(result);
 
-    // 애니메이션 후 결과 전송
+    // 이펙트 표시 후 결과 전송 및 이펙트 숨김
     setTimeout(async () => {
       await onSubmitResult(result);
-      setIsAnimating(false);
       setIsMyTurn(false);
-    }, 1500);
+      setIsSubmitting(false);
+    }, 1800);
+
+    setTimeout(() => {
+      setEffectResult(null);
+    }, 1600);
   }, [onSubmitResult]);
 
   // 버튼으로 던지기
   const handleButtonThrow = () => {
-    if (!isMyTurn || isAnimating) return;
+    if (!isMyTurn || isSubmitting) return;
 
-    setIsAnimating(true);
+    // 즉시 버튼 비활성화
+    setIsSubmitting(true);
+
+    // 약간의 딜레이 후 결과 생성
     setTimeout(() => {
       const { result } = throwYut();
       handleThrowResult(result);
-    }, 600);
+    }, 300);
   };
 
   // 모션으로 던지기 시작
   const handleStartMotionThrow = async () => {
-    if (!isMyTurn || isAnimating) return;
+    if (!isMyTurn || isSubmitting) return;
 
     if (!motionState.hasPermission) {
       const granted = await requestPermission();
@@ -92,7 +98,6 @@ const ClientController: React.FC<ClientControllerProps> = ({
         return;
       }
     }
-
     startDetecting();
   };
 
@@ -100,8 +105,34 @@ const ClientController: React.FC<ClientControllerProps> = ({
   const myTeam = teamSettings[myTeamIndex];
   const currentTurnTeam = room.gameState?.teams?.[room.gameState.currentTeamIndex];
 
+  const isSpecialResult = effectResult === YutResult.YUT || effectResult === YutResult.MO;
+
   return (
     <div className="min-h-screen flex flex-col bg-stone-100">
+      {/* 결과 이펙트 */}
+      {effectResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm pointer-events-none">
+          <div className="relative text-center">
+            {isSpecialResult && (
+              <div className="absolute -inset-10 flex items-center justify-center">
+                <span className="text-7xl animate-[spin_3s_linear_infinite]">🎉</span>
+                <span className="text-7xl animate-[spin_3s_linear_infinite_reverse]">🎊</span>
+              </div>
+            )}
+            <h1
+              className="text-9xl font-black text-white transition-all duration-500 animate-[zoom-in-out_1.6s_cubic-bezier(0.25,1,0.5,1)]"
+              style={{
+                WebkitTextStroke: '4px black',
+                textShadow: '0 0 30px rgba(0,0,0,0.5)',
+                color: isSpecialResult ? 'yellow' : 'white',
+              }}
+            >
+              {getYutResultLabel(effectResult)}
+            </h1>
+          </div>
+        </div>
+      )}
+
       {/* 헤더 */}
       <div className="bg-white p-4 shadow-md">
         <div className="flex justify-between items-center">
@@ -128,15 +159,7 @@ const ClientController: React.FC<ClientControllerProps> = ({
         {isMyTurn ? (
           // 내 차례
           <div className="w-full max-w-sm">
-            {isAnimating && lastResult ? (
-              // 결과 표시
-              <div className="text-center animate-bounce">
-                <div className="text-8xl font-black mb-4" style={{ color: myTeam?.color }}>
-                  {getYutResultLabel(lastResult)}
-                </div>
-                <p className="text-stone-500">결과 전송 중...</p>
-              </div>
-            ) : motionState.isDetecting ? (
+            {motionState.isDetecting ? (
               // 모션 감지 중
               <div className="text-center">
                 <div className="w-32 h-32 mx-auto mb-6 rounded-full bg-green-100 border-4 border-green-500 flex items-center justify-center animate-pulse">
@@ -186,16 +209,18 @@ const ClientController: React.FC<ClientControllerProps> = ({
                 {throwMode === 'button' ? (
                   <button
                     onClick={handleButtonThrow}
-                    className="w-full py-8 bg-gradient-to-b from-stone-700 to-stone-900 text-white text-2xl font-black rounded-3xl shadow-xl active:scale-95 transition-transform"
+                    disabled={isSubmitting}
+                    className="w-full py-8 bg-gradient-to-b from-stone-700 to-stone-900 text-white text-2xl font-black rounded-3xl shadow-xl active:scale-95 transition-transform disabled:opacity-50"
                   >
-                    윷 던지기
+                    {isSubmitting ? '전송 중...' : '윷 던지기'}
                   </button>
                 ) : (
                   <button
                     onClick={handleStartMotionThrow}
-                    className="w-full py-8 bg-gradient-to-b from-green-500 to-green-700 text-white text-2xl font-black rounded-3xl shadow-xl active:scale-95 transition-transform"
+                    disabled={isSubmitting}
+                    className="w-full py-8 bg-gradient-to-b from-green-500 to-green-700 text-white text-2xl font-black rounded-3xl shadow-xl active:scale-95 transition-transform disabled:opacity-50"
                   >
-                    {motionState.hasPermission ? '준비 완료 - 탭하세요' : '모션 권한 허용'}
+                    {isSubmitting ? '전송 중...' : (motionState.hasPermission ? '준비 완료 - 탭하세요' : '모션 권한 허용')}
                   </button>
                 )}
 

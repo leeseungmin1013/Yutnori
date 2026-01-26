@@ -15,14 +15,29 @@ import { useFirebaseRoom } from './hooks/useFirebaseRoom';
 
 type AppPhase = 'mode-select' | 'setup' | 'host-lobby' | 'client-join' | 'client-playing' | 'playing';
 
+// 윷 결과를 한글로 표시
+const getYutResultLabel = (result: YutResult): string => {
+  switch (result) {
+    case YutResult.DO: return '도';
+    case YutResult.GAE: return '개';
+    case YutResult.GEOL: return '걸';
+    case YutResult.YUT: return '윷';
+    case YutResult.MO: return '모';
+    case YutResult.BACK_DO: return '빽도';
+    default: return result;
+  }
+};
+
+
 const App: React.FC = () => {
   const [gameMode, setGameMode] = useState<GameMode>('local');
   const [appPhase, setAppPhase] = useState<AppPhase>('mode-select');
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [isThrowing, setIsThrowing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [canThrowAgain, setCanThrowAgain] = useState(false);
   const [usedExtraThrow, setUsedExtraThrow] = useState(false); // 추가 던지기 사용 여부
+  const [effectResult, setEffectResult] = useState<YutResult | null>(null);
 
   const firebase = useFirebaseRoom();
 
@@ -31,7 +46,7 @@ const App: React.FC = () => {
     if (gameMode === 'host' && firebase.room?.throwResult && gameState) {
       // 클라이언트로부터 던지기 결과 수신
       const result = firebase.room.throwResult.result;
-      handleThrowResult(result);
+      handleThrowResult(result, false, true); // fromClient = true
       firebase.clearThrowResult();
     }
   }, [firebase.room?.throwResult, gameMode]);
@@ -102,8 +117,6 @@ const App: React.FC = () => {
     firebase.startGame();
     firebase.updateGameState(initialState);
     setAppPhase('playing');
-
-    // 첫 팀에게 던지기 요청
     firebase.requestThrow(0);
   };
 
@@ -118,12 +131,17 @@ const App: React.FC = () => {
   };
 
   // 던지기 결과 처리 (호스트/로컬 공통)
-  const handleThrowResult = useCallback((result: YutResult, isExtraThrow: boolean = false) => {
+  const handleThrowResult = useCallback((result: YutResult, isExtraThrow: boolean = false, fromClient: boolean = false) => {
     if (!gameState) return;
-
+    
+    // 로컬/호스트에서 이펙트 표시
+    if (gameMode !== 'client') {
+      setEffectResult(result);
+      setTimeout(() => setEffectResult(null), 1600);
+    }
+    
     const hasExtraTurn = isExtraTurnResult(result);
 
-    // 윷/모가 나왔고, 아직 추가 던지기를 사용하지 않은 경우에만 추가 던지기 허용
     if (hasExtraTurn && !isExtraThrow) {
       setCanThrowAgain(true);
     }
@@ -139,10 +157,8 @@ const App: React.FC = () => {
         logs: [...(prev.logs || []), `${prev.teams[prev.currentTeamIndex].name} 팀이 '${result}'을(를) 던졌습니다!${extraMsg}`]
       };
 
-      // 호스트 모드면 Firebase 업데이트
       if (gameMode === 'host') {
         firebase.updateGameState(newState);
-        // 추가 던지기 요청 (아직 추가 던지기를 사용하지 않은 경우만)
         if (hasExtraTurn && !isExtraThrow) {
           firebase.requestThrow(prev.currentTeamIndex);
         }
@@ -150,28 +166,33 @@ const App: React.FC = () => {
 
       return newState;
     });
+    
+    if (!fromClient) {
+      setIsSubmitting(false);
+    }
 
-    setIsThrowing(false);
   }, [gameState, gameMode, firebase]);
 
   // 로컬 던지기
   const handleLocalThrow = () => {
-    if (!gameState || gameState.isGameOver || isThrowing) return;
+    if (!gameState || gameState.isGameOver || isSubmitting) return;
 
     const bufferLength = gameState.throwBuffer?.length ?? 0;
     const canThrow = bufferLength === 0 || canThrowAgain;
     if (!canThrow) return;
 
-    // 추가 던지기를 사용하는 경우인지 확인
     const isUsingExtraThrow = canThrowAgain && bufferLength > 0;
+    if (isUsingExtraThrow) {
+      setUsedExtraThrow(true);
+    }
 
-    setIsThrowing(true);
+    setIsSubmitting(true);
     setCanThrowAgain(false);
 
     setTimeout(() => {
       const { result } = throwYut();
       handleThrowResult(result, isUsingExtraThrow);
-    }, 600);
+    }, 300);
   };
 
   // 특정 결과로 이동 가능한 말이 있는지 확인
@@ -195,11 +216,11 @@ const App: React.FC = () => {
     const newLogs = [...(gameState.logs || [])];
     newLogs.push(`'${result}'로 이동할 수 있는 말이 없어 스킵합니다.`);
 
-    // 버퍼가 비었고 추가 던지기도 없으면 턴 넘김
     if (newBuffer.length === 0 && !canThrowAgain) {
       nextTeamIndex = (gameState.currentTeamIndex + 1) % gameState.teams.length;
       newLogs.push(`${gameState.teams[nextTeamIndex].name} 팀의 차례입니다.`);
       setCanThrowAgain(false);
+      setUsedExtraThrow(false);
     }
 
     const newState = {
@@ -224,11 +245,9 @@ const App: React.FC = () => {
   const handlePieceMove = (pieceId: string, result: YutResult) => {
     if (!gameState || gameState.isGameOver) return;
 
-    // 이동 가능 여부 확인
     const currentTeam = gameState.teams[gameState.currentTeamIndex];
     const piece = currentTeam.pieces.find(p => p.id === pieceId);
     if (piece && !canPieceMove(piece, result)) {
-      // 이 말은 이 결과로 이동할 수 없음
       return;
     }
 
@@ -251,6 +270,7 @@ const App: React.FC = () => {
       if (!updatedGameState.logs) updatedGameState.logs = [];
       updatedGameState.logs.push(`${updatedGameState.teams[nextTeamIndex].name} 팀의 차례입니다.`);
       setCanThrowAgain(false);
+      setUsedExtraThrow(false);
     }
 
     const newState = {
@@ -262,7 +282,6 @@ const App: React.FC = () => {
 
     setGameState(newState);
 
-    // 호스트 모드면 Firebase 업데이트 및 다음 던지기 요청
     if (gameMode === 'host') {
       firebase.updateGameState(newState);
 
@@ -270,6 +289,8 @@ const App: React.FC = () => {
         const needsThrow = canThrowAgain || caughtEnemy;
         if (needsThrow) {
           firebase.requestThrow(nextTeamIndex);
+        } else {
+           firebase.requestThrow((nextTeamIndex + 1) % newState.teams.length);
         }
       }
     }
@@ -327,7 +348,7 @@ const App: React.FC = () => {
   };
 
   // 던지기 가능 여부
-  const canThrow = gameState && !gameState.isGameOver && !isThrowing && (
+  const canThrow = gameState && !gameState.isGameOver && !isSubmitting && (
     (gameState.throwBuffer?.length ?? 0) === 0 || canThrowAgain
   );
 
@@ -389,9 +410,94 @@ const App: React.FC = () => {
   // 게임 플레이 화면 (로컬/호스트)
   if (appPhase === 'playing' && gameState) {
     const currentTeam = gameState.teams[gameState.currentTeamIndex];
+    const isSpecialResult = effectResult === YutResult.YUT || effectResult === YutResult.MO;
 
     return (
-      <div className="min-h-screen flex flex-col items-center justify-start p-4 md:p-8 gap-6">
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 gap-6">
+        {/* 결과 이펙트 */}
+        {effectResult && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none overflow-hidden">
+            {/* 배경 오버레이 - 팀 색상 기반 */}
+            <div
+              className="absolute inset-0 animate-[fadeIn_0.2s_ease-out]"
+              style={{
+                background: `radial-gradient(circle, ${currentTeam.color}40 0%, rgba(0,0,0,0.5) 70%)`
+              }}
+            />
+
+            {/* 파티클 효과 */}
+            <div className="absolute inset-0">
+              {[...Array(isSpecialResult ? 20 : 8)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute animate-[particle_1.5s_ease-out_forwards]"
+                  style={{
+                    left: '50%',
+                    top: '50%',
+                    fontSize: isSpecialResult ? '3rem' : '2rem',
+                    animationDelay: `${i * 0.05}s`,
+                    transform: `rotate(${i * (360 / (isSpecialResult ? 20 : 8))}deg) translateY(-100px)`,
+                  }}
+                >
+                  {isSpecialResult ? ['🎉', '🎊', '✨', '⭐', '🌟'][i % 5] : ['✨', '⭐'][i % 2]}
+                </div>
+              ))}
+            </div>
+
+            {/* 원형 링 이펙트 */}
+            <div
+              className="absolute w-64 h-64 rounded-full border-4 animate-[ringExpand_1s_ease-out_forwards]"
+              style={{ borderColor: currentTeam.color }}
+            />
+            <div
+              className="absolute w-64 h-64 rounded-full border-4 animate-[ringExpand_1s_ease-out_0.2s_forwards]"
+              style={{ borderColor: currentTeam.color, opacity: 0.6 }}
+            />
+
+            {/* 메인 텍스트 */}
+            <div className="relative text-center">
+              {/* 뒤쪽 글로우 효과 */}
+              <h1
+                className="absolute inset-0 text-9xl font-black blur-xl animate-[pulse_0.5s_ease-in-out_infinite]"
+                style={{ color: currentTeam.color, opacity: 0.8 }}
+              >
+                {getYutResultLabel(effectResult)}
+              </h1>
+
+              {/* 메인 글자 */}
+              <h1
+                className="relative text-9xl font-black animate-[bounceIn_0.6s_cubic-bezier(0.68,-0.55,0.265,1.55)]"
+                style={{
+                  color: currentTeam.color,
+                  WebkitTextStroke: '3px white',
+                  textShadow: `
+                    0 0 20px ${currentTeam.color},
+                    0 0 40px ${currentTeam.color},
+                    0 0 60px ${currentTeam.color}80,
+                    0 4px 0 rgba(0,0,0,0.3)
+                  `,
+                  filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.5))',
+                }}
+              >
+                {getYutResultLabel(effectResult)}
+              </h1>
+
+              {/* 윷/모 특별 효과 - 추가 텍스트 */}
+              {isSpecialResult && (
+                <p
+                  className="mt-4 text-2xl font-bold animate-[fadeInUp_0.5s_ease-out_0.3s_both]"
+                  style={{
+                    color: 'white',
+                    textShadow: `0 0 10px ${currentTeam.color}`
+                  }}
+                >
+                  🎯 한 번 더!
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         <header className="text-center">
           <h1 className="text-4xl font-black text-stone-800 tracking-tight mb-2">
             KOREAN <span className="text-red-600">YUT</span>NORI
@@ -484,7 +590,7 @@ const App: React.FC = () => {
                 currentTeam={currentTeam}
                 throwBuffer={gameState.throwBuffer || []}
                 onThrow={handleLocalThrow}
-                isThrowing={isThrowing}
+                isThrowing={isSubmitting}
                 isGameOver={gameState.isGameOver}
                 canThrow={canThrow || false}
               />
