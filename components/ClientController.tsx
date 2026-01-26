@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Room, YutResult } from '../types';
 import { useMotionDetector } from '../hooks/useMotionDetector';
 import { throwYut } from '../yutLogic';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getYutResultLabel } from '../i18n';
 
 interface ClientControllerProps {
   room: Room;
@@ -11,25 +13,13 @@ interface ClientControllerProps {
   onLeave: () => void;
 }
 
-// 윷 결과를 한글로 표시
-const getYutResultLabel = (result: YutResult): string => {
-  switch (result) {
-    case YutResult.DO: return '도';
-    case YutResult.GAE: return '개';
-    case YutResult.GEOL: return '걸';
-    case YutResult.YUT: return '윷';
-    case YutResult.MO: return '모';
-    case YutResult.BACK_DO: return '빽도';
-    default: return result;
-  }
-};
-
 const ClientController: React.FC<ClientControllerProps> = ({
   room,
   playerId,
   onSubmitResult,
   onLeave
 }) => {
+  const { lang, t } = useLanguage();
   const { motionState, requestPermission, startDetecting, stopDetecting, onThrowDetected } = useMotionDetector();
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [throwMode, setThrowMode] = useState<'motion' | 'button'>('button');
@@ -54,7 +44,7 @@ const ClientController: React.FC<ClientControllerProps> = ({
     onThrowDetected((result) => {
       handleThrowResult(result);
     });
-  }, [onThrowDetected]); // onThrowDetected를 의존성 배열에 추가
+  }, [onThrowDetected]);
 
   const handleThrowResult = useCallback(async (result: YutResult) => {
     setIsSubmitting(true);
@@ -93,7 +83,7 @@ const ClientController: React.FC<ClientControllerProps> = ({
     if (!motionState.hasPermission) {
       const granted = await requestPermission();
       if (!granted) {
-        alert('모션 센서 권한이 필요합니다. 버튼 모드를 사용해주세요.');
+        alert(lang === 'ko' ? '모션 센서 권한이 필요합니다. 버튼 모드를 사용해주세요.' : 'Motion sensor permission required. Please use button mode.');
         setThrowMode('button');
         return;
       }
@@ -127,7 +117,7 @@ const ClientController: React.FC<ClientControllerProps> = ({
                 color: isSpecialResult ? 'yellow' : 'white',
               }}
             >
-              {getYutResultLabel(effectResult)}
+              {getYutResultLabel(effectResult, lang)}
             </h1>
           </div>
         </div>
@@ -149,7 +139,7 @@ const ClientController: React.FC<ClientControllerProps> = ({
             onClick={onLeave}
             className="text-sm text-stone-400 hover:text-red-500"
           >
-            나가기
+            {t.leave}
           </button>
         </div>
       </div>
@@ -165,22 +155,28 @@ const ClientController: React.FC<ClientControllerProps> = ({
                 <div className="w-32 h-32 mx-auto mb-6 rounded-full bg-green-100 border-4 border-green-500 flex items-center justify-center animate-pulse">
                   <span className="text-4xl">📱</span>
                 </div>
-                <p className="text-xl font-bold text-green-600 mb-2">휴대폰을 흔드세요!</p>
-                <p className="text-stone-500 text-sm mb-6">위아래로 힘차게 던지는 동작을 하세요</p>
+                <p className="text-xl font-bold text-green-600 mb-2">
+                  {lang === 'ko' ? '휴대폰을 흔드세요!' : 'Shake your phone!'}
+                </p>
+                <p className="text-stone-500 text-sm mb-6">
+                  {lang === 'ko' ? '위아래로 힘차게 던지는 동작을 하세요' : 'Make a throwing motion up and down'}
+                </p>
                 <button
                   onClick={stopDetecting}
                   className="px-6 py-2 bg-stone-200 text-stone-600 rounded-xl"
                 >
-                  취소
+                  {t.cancel}
                 </button>
               </div>
             ) : (
               // 던지기 선택
               <div className="text-center">
                 <p className="text-2xl font-black mb-2" style={{ color: myTeam?.color }}>
-                  당신의 차례입니다!
+                  {lang === 'ko' ? '당신의 차례입니다!' : "It's your turn!"}
                 </p>
-                <p className="text-stone-500 mb-8">윷을 던져주세요</p>
+                <p className="text-stone-500 mb-8">
+                  {lang === 'ko' ? '윷을 던져주세요' : 'Throw the yut'}
+                </p>
 
                 {/* 모드 선택 */}
                 <div className="flex gap-2 mb-6">
@@ -192,7 +188,7 @@ const ClientController: React.FC<ClientControllerProps> = ({
                         : 'bg-stone-100 text-stone-500'
                     }`}
                   >
-                    버튼
+                    {lang === 'ko' ? '버튼' : 'Button'}
                   </button>
                   <button
                     onClick={() => setThrowMode('motion')}
@@ -202,7 +198,7 @@ const ClientController: React.FC<ClientControllerProps> = ({
                         : 'bg-stone-100 text-stone-500'
                     }`}
                   >
-                    모션
+                    {lang === 'ko' ? '모션' : 'Motion'}
                   </button>
                 </div>
 
@@ -212,7 +208,7 @@ const ClientController: React.FC<ClientControllerProps> = ({
                     disabled={isSubmitting}
                     className="w-full py-8 bg-gradient-to-b from-stone-700 to-stone-900 text-white text-2xl font-black rounded-3xl shadow-xl active:scale-95 transition-transform disabled:opacity-50"
                   >
-                    {isSubmitting ? '전송 중...' : '윷 던지기'}
+                    {isSubmitting ? (lang === 'ko' ? '전송 중...' : 'Sending...') : t.throwYut}
                   </button>
                 ) : (
                   <button
@@ -220,13 +216,19 @@ const ClientController: React.FC<ClientControllerProps> = ({
                     disabled={isSubmitting}
                     className="w-full py-8 bg-gradient-to-b from-green-500 to-green-700 text-white text-2xl font-black rounded-3xl shadow-xl active:scale-95 transition-transform disabled:opacity-50"
                   >
-                    {isSubmitting ? '전송 중...' : (motionState.hasPermission ? '준비 완료 - 탭하세요' : '모션 권한 허용')}
+                    {isSubmitting
+                      ? (lang === 'ko' ? '전송 중...' : 'Sending...')
+                      : (motionState.hasPermission
+                          ? (lang === 'ko' ? '준비 완료 - 탭하세요' : 'Ready - Tap to start')
+                          : (lang === 'ko' ? '모션 권한 허용' : 'Allow Motion')
+                        )
+                    }
                   </button>
                 )}
 
                 {throwMode === 'motion' && !motionState.isSupported && (
                   <p className="mt-4 text-sm text-red-500">
-                    이 기기는 모션 센서를 지원하지 않습니다
+                    {lang === 'ko' ? '이 기기는 모션 센서를 지원하지 않습니다' : 'This device does not support motion sensors'}
                   </p>
                 )}
               </div>
@@ -239,13 +241,13 @@ const ClientController: React.FC<ClientControllerProps> = ({
               <span className="text-4xl">⏳</span>
             </div>
             <p className="text-xl font-bold text-stone-600 mb-2">
-              대기 중
+              {t.waiting}
             </p>
             {currentTurnTeam && (
               <p className="text-stone-500">
                 <span style={{ color: currentTurnTeam.color, fontWeight: 'bold' }}>
                   {currentTurnTeam.name}
-                </span> 팀의 차례입니다
+                </span>{t.yourTurn}
               </p>
             )}
           </div>

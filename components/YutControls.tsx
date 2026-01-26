@@ -1,6 +1,8 @@
 
 import React from 'react';
 import { Team, YutResult } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getYutResultLabel } from '../i18n';
 
 interface YutControlsProps {
   currentTeam: Team;
@@ -19,21 +21,22 @@ const YutControls: React.FC<YutControlsProps> = ({
   isGameOver,
   canThrow
 }) => {
+  const { lang, t } = useLanguage();
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-xl border border-stone-200 flex flex-col gap-6">
       <div className="text-center">
-        <h3 className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">Available Moves</h3>
+        <h3 className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">{t.throwResults}</h3>
         <div className="flex flex-wrap justify-center gap-2 min-h-[44px]">
           {throwBuffer.length === 0 ? (
-            <span className="text-stone-300 italic text-sm self-center">윷을 던져주세요...</span>
+            <span className="text-stone-300 italic text-sm self-center">{t.throwYut}...</span>
           ) : (
             throwBuffer.map((res, i) => (
-              <span 
-                key={i} 
+              <span
+                key={i}
                 className="px-4 py-2 bg-stone-100 text-stone-800 rounded-lg font-black border-b-4 border-stone-300 text-sm animate-in fade-in zoom-in duration-300"
               >
-                {res}
+                {getYutResultLabel(res, lang)}
               </span>
             ))
           )}
@@ -45,8 +48,8 @@ const YutControls: React.FC<YutControlsProps> = ({
           onClick={onThrow}
           disabled={!canThrow || isThrowing}
           className={`w-full py-6 rounded-2xl font-black text-xl tracking-tight transition-all relative overflow-hidden flex flex-col items-center justify-center gap-1 ${
-            canThrow && !isThrowing 
-              ? 'bg-stone-900 text-white hover:-translate-y-1 active:translate-y-0 active:scale-95 shadow-xl hover:shadow-2xl' 
+            canThrow && !isThrowing
+              ? 'bg-stone-900 text-white hover:-translate-y-1 active:translate-y-0 active:scale-95 shadow-xl hover:shadow-2xl'
               : 'bg-stone-100 text-stone-300 cursor-not-allowed border-2 border-stone-200'
           }`}
         >
@@ -60,9 +63,9 @@ const YutControls: React.FC<YutControlsProps> = ({
           ) : (
             <>
               <span className="text-sm font-bold uppercase tracking-tighter opacity-60">
-                {currentTeam.name} Turn
+                {currentTeam.name}{t.yourTurn}
               </span>
-              <span>윷 던지기</span>
+              <span>{t.throwYut}</span>
             </>
           )}
         </button>
@@ -73,12 +76,12 @@ const YutControls: React.FC<YutControlsProps> = ({
 
       <div className="grid grid-cols-2 gap-2 text-center text-[10px] font-bold text-stone-400">
         <div className="p-2 border border-stone-100 rounded-lg">
-          <p className="mb-1">팁</p>
-          <p className="text-stone-600">윷/모가 나오면 한 번 더!</p>
+          <p className="mb-1">TIP</p>
+          <p className="text-stone-600">{lang === 'ko' ? '윷/모가 나오면 한 번 더!' : 'Yut/Mo = extra turn!'}</p>
         </div>
         <div className="p-2 border border-stone-100 rounded-lg">
-          <p className="mb-1">팁</p>
-          <p className="text-stone-600">상대 말을 잡아도 한 번 더!</p>
+          <p className="mb-1">TIP</p>
+          <p className="text-stone-600">{lang === 'ko' ? '상대 말을 잡아도 한 번 더!' : 'Catch = extra turn!'}</p>
         </div>
       </div>
     </div>

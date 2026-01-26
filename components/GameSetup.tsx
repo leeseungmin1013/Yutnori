@@ -1,33 +1,36 @@
 
 import React, { useState } from 'react';
 import { Team } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface GameSetupProps {
   onStartGame: (teams: Team[]) => void;
 }
 
-const DEFAULT_TEAMS = [
-  { name: '청룡', color: '#3b82f6' },
-  { name: '백호', color: '#ef4444' },
-  { name: '주작', color: '#f59e0b' },
-  { name: '현무', color: '#10b981' },
-];
-
-const COLOR_OPTIONS = [
-  { name: '파랑', value: '#3b82f6' },
-  { name: '빨강', value: '#ef4444' },
-  { name: '노랑', value: '#f59e0b' },
-  { name: '초록', value: '#10b981' },
-  { name: '보라', value: '#8b5cf6' },
-  { name: '분홍', value: '#ec4899' },
-  { name: '하늘', value: '#06b6d4' },
-  { name: '주황', value: '#f97316' },
-];
-
 const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
+  const { t } = useLanguage();
+
+  const DEFAULT_TEAMS = [
+    { name: t.team1, color: '#3b82f6' },
+    { name: t.team2, color: '#ef4444' },
+    { name: t.team3, color: '#f59e0b' },
+    { name: t.team4, color: '#10b981' },
+  ];
+
+  const COLOR_OPTIONS = [
+    { name: t.blue, value: '#3b82f6' },
+    { name: t.red, value: '#ef4444' },
+    { name: t.yellow, value: '#f59e0b' },
+    { name: t.green, value: '#10b981' },
+    { name: t.purple, value: '#8b5cf6' },
+    { name: t.pink, value: '#ec4899' },
+    { name: t.cyan, value: '#06b6d4' },
+    { name: t.orange, value: '#f97316' },
+  ];
+
   const [teamCount, setTeamCount] = useState(2);
   const [teams, setTeams] = useState(
-    DEFAULT_TEAMS.map((t, i) => ({ ...t, id: `team-${i + 1}` }))
+    DEFAULT_TEAMS.map((team, i) => ({ ...team, id: `team-${i + 1}` }))
   );
 
   const handleTeamCountChange = (count: number) => {
@@ -47,10 +50,10 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
   };
 
   const handleStartGame = () => {
-    const selectedTeams: Team[] = teams.slice(0, teamCount).map((t, i) => ({
+    const selectedTeams: Team[] = teams.slice(0, teamCount).map((team, i) => ({
       id: `team-${i + 1}`,
-      name: t.name,
-      color: t.color,
+      name: team.name,
+      color: team.color,
       finishedCount: 0,
       pieces: Array.from({ length: 4 }).map((_, j) => ({
         id: `t${i + 1}-p${j}`,
@@ -70,7 +73,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
     return teams
       .slice(0, teamCount)
       .filter((_, i) => i !== exceptIndex)
-      .map(t => t.color);
+      .map(team => team.color);
   };
 
   return (
@@ -79,12 +82,12 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
         <h1 className="text-3xl font-black text-center text-stone-800 mb-2">
           KOREAN <span className="text-red-600">YUT</span>NORI
         </h1>
-        <p className="text-stone-500 text-center mb-8">게임 설정</p>
+        <p className="text-stone-500 text-center mb-8">{t.gameSetup}</p>
 
         {/* 팀 수 선택 */}
         <div className="mb-8">
           <label className="block text-sm font-bold text-stone-600 mb-3">
-            참가 팀 수
+            {t.teamCount}
           </label>
           <div className="flex gap-2">
             {[2, 3, 4].map(count => (
@@ -97,7 +100,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
                     : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                 }`}
               >
-                {count}팀
+                {count}
               </button>
             ))}
           </div>
@@ -106,7 +109,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
         {/* 팀 설정 */}
         <div className="space-y-4 mb-8">
           <label className="block text-sm font-bold text-stone-600">
-            팀 설정
+            {t.teamSettings}
           </label>
           {teams.slice(0, teamCount).map((team, index) => (
             <div
@@ -121,7 +124,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
                 type="text"
                 value={team.name}
                 onChange={e => handleNameChange(index, e.target.value)}
-                placeholder={`팀 ${index + 1} 이름`}
+                placeholder={`Team ${index + 1}`}
                 maxLength={10}
                 className="flex-1 px-3 py-2 rounded-lg border border-stone-200 focus:outline-none focus:ring-2 focus:ring-stone-400 text-stone-800 font-medium"
               />
@@ -139,7 +142,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
                       value={option.value}
                       disabled={isUsed}
                     >
-                      {option.name} {isUsed ? '(사용중)' : ''}
+                      {option.name} {isUsed ? t.inUse : ''}
                     </option>
                   );
                 })}
@@ -153,12 +156,12 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
           onClick={handleStartGame}
           className="w-full py-4 bg-stone-900 text-white font-bold text-lg rounded-2xl hover:bg-stone-800 active:scale-[0.98] transition-all shadow-xl"
         >
-          게임 시작
+          {t.startGame}
         </button>
       </div>
 
       <p className="mt-8 text-stone-400 text-sm">
-        Traditional Korean Board Game
+        {t.appSubtitle}
       </p>
     </div>
   );

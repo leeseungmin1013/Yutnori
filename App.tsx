@@ -11,22 +11,12 @@ import ModeSelect from './components/ModeSelect';
 import HostLobby from './components/HostLobby';
 import ClientJoin from './components/ClientJoin';
 import ClientController from './components/ClientController';
+import TopBar from './components/TopBar';
 import { useFirebaseRoom } from './hooks/useFirebaseRoom';
+import { useLanguage } from './contexts/LanguageContext';
+import { getYutResultLabel } from './i18n';
 
 type AppPhase = 'mode-select' | 'setup' | 'host-lobby' | 'client-join' | 'client-playing' | 'playing';
-
-// 윷 결과를 한글로 표시
-const getYutResultLabel = (result: YutResult): string => {
-  switch (result) {
-    case YutResult.DO: return '도';
-    case YutResult.GAE: return '개';
-    case YutResult.GEOL: return '걸';
-    case YutResult.YUT: return '윷';
-    case YutResult.MO: return '모';
-    case YutResult.BACK_DO: return '빽도';
-    default: return result;
-  }
-};
 
 
 const App: React.FC = () => {
@@ -36,17 +26,17 @@ const App: React.FC = () => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [canThrowAgain, setCanThrowAgain] = useState(false);
-  const [usedExtraThrow, setUsedExtraThrow] = useState(false); // 추가 던지기 사용 여부
   const [effectResult, setEffectResult] = useState<YutResult | null>(null);
 
   const firebase = useFirebaseRoom();
+  const { lang, t } = useLanguage();
 
   // Firebase 룸 상태 변경 감지 (호스트)
   useEffect(() => {
     if (gameMode === 'host' && firebase.room?.throwResult && gameState) {
       // 클라이언트로부터 던지기 결과 수신
       const result = firebase.room.throwResult.result;
-      handleThrowResult(result, false, true); // fromClient = true
+      handleThrowResult(result, true); // fromClient = true
       firebase.clearThrowResult();
     }
   }, [firebase.room?.throwResult, gameMode]);
@@ -131,25 +121,26 @@ const App: React.FC = () => {
   };
 
   // 던지기 결과 처리 (호스트/로컬 공통)
-  const handleThrowResult = useCallback((result: YutResult, isExtraThrow: boolean = false, fromClient: boolean = false) => {
+  const handleThrowResult = useCallback((result: YutResult, fromClient: boolean = false) => {
     if (!gameState) return;
-    
+
     // 로컬/호스트에서 이펙트 표시
     if (gameMode !== 'client') {
       setEffectResult(result);
       setTimeout(() => setEffectResult(null), 1600);
     }
-    
+
     const hasExtraTurn = isExtraTurnResult(result);
 
-    if (hasExtraTurn && !isExtraThrow) {
+    // 윷/모가 나오면 항상 추가 던지기 허용 (연속으로 나와도)
+    if (hasExtraTurn) {
       setCanThrowAgain(true);
     }
 
     setGameState(prev => {
       if (!prev) return prev;
       const newBuffer = [...(prev.throwBuffer || []), result];
-      const extraMsg = (hasExtraTurn && !isExtraThrow) ? ' 한 번 더 던지세요!' : '';
+      const extraMsg = hasExtraTurn ? ' 한 번 더 던지세요!' : '';
 
       const newState = {
         ...prev,
@@ -159,14 +150,14 @@ const App: React.FC = () => {
 
       if (gameMode === 'host') {
         firebase.updateGameState(newState);
-        if (hasExtraTurn && !isExtraThrow) {
+        if (hasExtraTurn) {
           firebase.requestThrow(prev.currentTeamIndex);
         }
       }
 
       return newState;
     });
-    
+
     if (!fromClient) {
       setIsSubmitting(false);
     }
@@ -181,17 +172,12 @@ const App: React.FC = () => {
     const canThrow = bufferLength === 0 || canThrowAgain;
     if (!canThrow) return;
 
-    const isUsingExtraThrow = canThrowAgain && bufferLength > 0;
-    if (isUsingExtraThrow) {
-      setUsedExtraThrow(true);
-    }
-
     setIsSubmitting(true);
     setCanThrowAgain(false);
 
     setTimeout(() => {
       const { result } = throwYut();
-      handleThrowResult(result, isUsingExtraThrow);
+      handleThrowResult(result);
     }, 300);
   };
 
@@ -220,7 +206,6 @@ const App: React.FC = () => {
       nextTeamIndex = (gameState.currentTeamIndex + 1) % gameState.teams.length;
       newLogs.push(`${gameState.teams[nextTeamIndex].name} 팀의 차례입니다.`);
       setCanThrowAgain(false);
-      setUsedExtraThrow(false);
     }
 
     const newState = {
@@ -270,7 +255,6 @@ const App: React.FC = () => {
       if (!updatedGameState.logs) updatedGameState.logs = [];
       updatedGameState.logs.push(`${updatedGameState.teams[nextTeamIndex].name} 팀의 차례입니다.`);
       setCanThrowAgain(false);
-      setUsedExtraThrow(false);
     }
 
     const newState = {
@@ -356,54 +340,73 @@ const App: React.FC = () => {
 
   // 모드 선택
   if (appPhase === 'mode-select') {
-    return <ModeSelect onSelectMode={handleModeSelect} />;
+    return (
+      <>
+        <TopBar />
+        <ModeSelect onSelectMode={handleModeSelect} />
+      </>
+    );
   }
 
   // 로컬 게임 설정
   if (appPhase === 'setup' && gameMode === 'local') {
-    return <GameSetup onStartGame={handleLocalStartGame} />;
+    return (
+      <>
+        <TopBar />
+        <GameSetup onStartGame={handleLocalStartGame} />
+      </>
+    );
   }
 
   // 호스트 대기실
   if (appPhase === 'host-lobby' && gameMode === 'host') {
     return (
-      <HostLobby
-        room={firebase.room}
-        roomCode={firebase.room?.code || null}
-        loading={firebase.loading}
-        error={firebase.error}
-        onCreateRoom={handleCreateRoom}
-        onStartGame={handleHostStartGame}
-        onClose={handleBack}
-      />
+      <>
+        <TopBar />
+        <HostLobby
+          room={firebase.room}
+          roomCode={firebase.room?.code || null}
+          loading={firebase.loading}
+          error={firebase.error}
+          onCreateRoom={handleCreateRoom}
+          onStartGame={handleHostStartGame}
+          onClose={handleBack}
+        />
+      </>
     );
   }
 
   // 클라이언트 참가
   if (appPhase === 'client-join' && gameMode === 'client') {
     return (
-      <ClientJoin
-        room={firebase.room}
-        playerId={firebase.playerId}
-        loading={firebase.loading}
-        error={firebase.error}
-        onJoin={handleClientJoin}
-        onSelectTeam={firebase.selectTeam}
-        onLeave={handleBack}
-        onReady={() => setAppPhase('client-playing')}
-      />
+      <>
+        <TopBar />
+        <ClientJoin
+          room={firebase.room}
+          playerId={firebase.playerId}
+          loading={firebase.loading}
+          error={firebase.error}
+          onJoin={handleClientJoin}
+          onSelectTeam={firebase.selectTeam}
+          onLeave={handleBack}
+          onReady={() => setAppPhase('client-playing')}
+        />
+      </>
     );
   }
 
   // 클라이언트 게임 중
   if (appPhase === 'client-playing' && gameMode === 'client' && firebase.room) {
     return (
-      <ClientController
-        room={firebase.room}
-        playerId={firebase.playerId}
-        onSubmitResult={handleClientSubmitResult}
-        onLeave={handleBack}
-      />
+      <>
+        <TopBar />
+        <ClientController
+          room={firebase.room}
+          playerId={firebase.playerId}
+          onSubmitResult={handleClientSubmitResult}
+          onLeave={handleBack}
+        />
+      </>
     );
   }
 
@@ -414,6 +417,7 @@ const App: React.FC = () => {
 
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 gap-6">
+        <TopBar />
         {/* 결과 이펙트 */}
         {effectResult && (
           <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none overflow-hidden">
@@ -461,7 +465,7 @@ const App: React.FC = () => {
                 className="absolute inset-0 text-9xl font-black blur-xl animate-[pulse_0.5s_ease-in-out_infinite]"
                 style={{ color: currentTeam.color, opacity: 0.8 }}
               >
-                {getYutResultLabel(effectResult)}
+                {getYutResultLabel(effectResult, lang)}
               </h1>
 
               {/* 메인 글자 */}
@@ -479,7 +483,7 @@ const App: React.FC = () => {
                   filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.5))',
                 }}
               >
-                {getYutResultLabel(effectResult)}
+                {getYutResultLabel(effectResult, lang)}
               </h1>
 
               {/* 윷/모 특별 효과 - 추가 텍스트 */}
@@ -491,7 +495,7 @@ const App: React.FC = () => {
                     textShadow: `0 0 10px ${currentTeam.color}`
                   }}
                 >
-                  🎯 한 번 더!
+                  🎯 {t.oneMoreThrow}
                 </p>
               )}
             </div>
@@ -505,10 +509,10 @@ const App: React.FC = () => {
           <p className="text-stone-500 font-medium italic">
             {gameMode === 'host' && firebase.room?.code && (
               <span className="bg-stone-800 text-white px-3 py-1 rounded-lg text-sm mr-2">
-                코드: {firebase.room.code}
+                {t.joinCode}: {firebase.room.code}
               </span>
             )}
-            Traditional Real-time Board Game
+            {t.appSubtitle}
           </p>
         </header>
 
@@ -518,7 +522,7 @@ const App: React.FC = () => {
             <div className="bg-white p-6 rounded-2xl shadow-xl border border-stone-200">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                게임 상태
+                {t.gameStatus}
               </h2>
               <div className="space-y-3">
                 {gameState.teams.map((team, idx) => (
@@ -536,7 +540,7 @@ const App: React.FC = () => {
                         {team.name}
                       </span>
                       <span className="text-xs font-mono bg-stone-200 px-2 py-0.5 rounded uppercase">
-                        {gameState.currentTeamIndex === idx ? 'Playing' : 'Waiting'}
+                        {gameState.currentTeamIndex === idx ? t.playing : t.waiting}
                       </span>
                     </div>
                     <div className="w-full bg-stone-200 h-2 rounded-full overflow-hidden">
@@ -549,7 +553,7 @@ const App: React.FC = () => {
                       />
                     </div>
                     <p className="text-xs mt-1 text-stone-500 text-right">
-                      완료: {team.finishedCount} / 4
+                      {t.finished}: {team.finishedCount} / 4
                     </p>
                   </div>
                 ))}
@@ -563,13 +567,13 @@ const App: React.FC = () => {
                 onClick={resetGame}
                 className="text-sm text-stone-400 hover:text-stone-600 transition-colors py-2"
               >
-                게임 초기화
+                {t.resetGame}
               </button>
               <button
                 onClick={handleBack}
                 className="text-sm text-stone-400 hover:text-red-500 transition-colors py-2"
               >
-                {gameMode === 'host' ? '방 닫기' : '메인으로'}
+                {gameMode === 'host' ? t.closeRoom : t.toMain}
               </button>
             </div>
           </div>
@@ -598,7 +602,7 @@ const App: React.FC = () => {
               // 호스트 모드: 클라이언트 대기 표시
               <div className="bg-white p-6 rounded-2xl shadow-xl border border-stone-200">
                 <h3 className="text-lg font-bold mb-4 text-center">
-                  {currentTeam.name} 팀 차례
+                  {currentTeam.name}{t.yourTurn}
                 </h3>
                 <div className="text-center py-8">
                   {(gameState.throwBuffer?.length ?? 0) === 0 ? (
@@ -606,22 +610,22 @@ const App: React.FC = () => {
                       <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-stone-100 flex items-center justify-center animate-pulse">
                         <span className="text-2xl">📱</span>
                       </div>
-                      <p className="text-stone-500">참가자가 윷을 던지는 중...</p>
+                      <p className="text-stone-500">{t.waitingForThrow}</p>
                     </>
                   ) : (
                     <>
-                      <p className="text-stone-600 mb-2">던진 결과:</p>
+                      <p className="text-stone-600 mb-2">{t.throwResults}:</p>
                       <div className="flex flex-wrap justify-center gap-2">
                         {(gameState.throwBuffer || []).map((res, i) => (
                           <span
                             key={i}
                             className="px-4 py-2 bg-stone-100 text-stone-800 rounded-lg font-black"
                           >
-                            {res}
+                            {getYutResultLabel(res, lang)}
                           </span>
                         ))}
                       </div>
-                      <p className="text-sm text-stone-400 mt-4">말을 선택하세요</p>
+                      <p className="text-sm text-stone-400 mt-4">{t.selectPiece}</p>
                     </>
                   )}
                 </div>
@@ -632,27 +636,27 @@ const App: React.FC = () => {
               <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl p-10 max-w-md w-full text-center shadow-2xl">
                   <div className="text-6xl mb-6">🏆</div>
-                  <h2 className="text-3xl font-black mb-2">승리!</h2>
+                  <h2 className="text-3xl font-black mb-2">{t.victory}</h2>
                   <p className="text-lg text-stone-600 mb-8">
                     <span
                       className="font-bold underline decoration-4 underline-offset-4"
-                      style={{ color: gameState.teams.find(t => t.id === gameState.winnerTeamId)?.color }}
+                      style={{ color: gameState.teams.find(team => team.id === gameState.winnerTeamId)?.color }}
                     >
-                      {gameState.teams.find(t => t.id === gameState.winnerTeamId)?.name}
-                    </span> 팀이 영광의 승리를 차지했습니다!
+                      {gameState.teams.find(team => team.id === gameState.winnerTeamId)?.name}
+                    </span> {t.teamWon}
                   </p>
                   <div className="flex flex-col gap-3">
                     <button
                       onClick={resetGame}
                       className="w-full py-4 bg-stone-900 text-white font-bold rounded-2xl hover:bg-stone-800"
                     >
-                      다시 시작
+                      {t.playAgain}
                     </button>
                     <button
                       onClick={handleBack}
                       className="w-full py-3 bg-stone-100 text-stone-600 font-bold rounded-2xl hover:bg-stone-200"
                     >
-                      메인으로
+                      {t.toMain}
                     </button>
                   </div>
                 </div>
@@ -671,7 +675,8 @@ const App: React.FC = () => {
   // 기본 로딩
   return (
     <div className="min-h-screen flex items-center justify-center bg-stone-100">
-      <p className="text-stone-500">로딩 중...</p>
+      <TopBar />
+      <p className="text-stone-500">Loading...</p>
     </div>
   );
 };

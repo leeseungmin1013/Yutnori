@@ -1,19 +1,22 @@
 
 import React from 'react';
 import { GameMode } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ModeSelectProps {
   onSelectMode: (mode: GameMode) => void;
 }
 
 const ModeSelect: React.FC<ModeSelectProps> = ({ onSelectMode }) => {
+  const { t } = useLanguage();
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-stone-100">
       <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full">
         <h1 className="text-3xl font-black text-center text-stone-800 mb-2">
           KOREAN <span className="text-red-600">YUT</span>NORI
         </h1>
-        <p className="text-stone-500 text-center mb-8">게임 모드를 선택하세요</p>
+        <p className="text-stone-500 text-center mb-8">{t.selectMode}</p>
 
         <div className="space-y-4">
           {/* 로컬 모드 */}
@@ -26,8 +29,8 @@ const ModeSelect: React.FC<ModeSelectProps> = ({ onSelectMode }) => {
                 🎮
               </div>
               <div>
-                <h3 className="font-bold text-lg text-stone-800">로컬 플레이</h3>
-                <p className="text-sm text-stone-500">한 기기에서 버튼으로 플레이</p>
+                <h3 className="font-bold text-lg text-stone-800">{t.localPlay}</h3>
+                <p className="text-sm text-stone-500">{t.localPlayDesc}</p>
               </div>
             </div>
           </button>
@@ -42,8 +45,8 @@ const ModeSelect: React.FC<ModeSelectProps> = ({ onSelectMode }) => {
                 📺
               </div>
               <div>
-                <h3 className="font-bold text-lg text-stone-800">호스트로 시작</h3>
-                <p className="text-sm text-stone-500">게임을 생성하고 참가자를 기다립니다</p>
+                <h3 className="font-bold text-lg text-stone-800">{t.hostStart}</h3>
+                <p className="text-sm text-stone-500">{t.hostStartDesc}</p>
               </div>
             </div>
           </button>
@@ -58,8 +61,8 @@ const ModeSelect: React.FC<ModeSelectProps> = ({ onSelectMode }) => {
                 📱
               </div>
               <div>
-                <h3 className="font-bold text-lg text-stone-800">참가자로 입장</h3>
-                <p className="text-sm text-stone-500">휴대폰으로 윷을 던집니다</p>
+                <h3 className="font-bold text-lg text-stone-800">{t.joinAsPlayer}</h3>
+                <p className="text-sm text-stone-500">{t.joinAsPlayerDesc}</p>
               </div>
             </div>
           </button>
@@ -67,14 +70,14 @@ const ModeSelect: React.FC<ModeSelectProps> = ({ onSelectMode }) => {
 
         <div className="mt-8 p-4 bg-amber-50 rounded-xl border border-amber-200">
           <p className="text-sm text-amber-800">
-            <span className="font-bold">💡 멀티플레이어 모드</span><br />
-            호스트는 TV/PC에서 게임 보드를 표시하고, 참가자들은 휴대폰으로 윷을 던집니다.
+            <span className="font-bold">💡 Multiplayer</span><br />
+            {t.multiplayerTip}
           </p>
         </div>
       </div>
 
       <p className="mt-8 text-stone-400 text-sm">
-        Traditional Korean Board Game
+        {t.appSubtitle}
       </p>
     </div>
   );

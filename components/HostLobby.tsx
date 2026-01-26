@@ -1,6 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Team, Room, Player } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface TeamSetting {
   name: string;
@@ -17,24 +18,6 @@ interface HostLobbyProps {
   onClose: () => void;
 }
 
-const DEFAULT_TEAMS: TeamSetting[] = [
-  { name: '청룡', color: '#3b82f6' },
-  { name: '백호', color: '#ef4444' },
-  { name: '주작', color: '#f59e0b' },
-  { name: '현무', color: '#10b981' },
-];
-
-const COLOR_OPTIONS = [
-  { name: '파랑', value: '#3b82f6' },
-  { name: '빨강', value: '#ef4444' },
-  { name: '노랑', value: '#f59e0b' },
-  { name: '초록', value: '#10b981' },
-  { name: '보라', value: '#8b5cf6' },
-  { name: '분홍', value: '#ec4899' },
-  { name: '하늘', value: '#06b6d4' },
-  { name: '주황', value: '#f97316' },
-];
-
 const HostLobby: React.FC<HostLobbyProps> = ({
   room,
   roomCode,
@@ -44,15 +27,35 @@ const HostLobby: React.FC<HostLobbyProps> = ({
   onStartGame,
   onClose
 }) => {
+  const { t } = useLanguage();
+
+  const DEFAULT_TEAMS: TeamSetting[] = [
+    { name: t.team1, color: '#3b82f6' },
+    { name: t.team2, color: '#ef4444' },
+    { name: t.team3, color: '#f59e0b' },
+    { name: t.team4, color: '#10b981' },
+  ];
+
+  const COLOR_OPTIONS = [
+    { name: t.blue, value: '#3b82f6' },
+    { name: t.red, value: '#ef4444' },
+    { name: t.yellow, value: '#f59e0b' },
+    { name: t.green, value: '#10b981' },
+    { name: t.purple, value: '#8b5cf6' },
+    { name: t.pink, value: '#ec4899' },
+    { name: t.cyan, value: '#06b6d4' },
+    { name: t.orange, value: '#f97316' },
+  ];
+
   const [teamCount, setTeamCount] = useState(2);
   const [teams, setTeams] = useState<TeamSetting[]>(DEFAULT_TEAMS);
   const [isCreated, setIsCreated] = useState(false);
 
   const handleCreateRoom = async () => {
-    const selectedTeams: Team[] = teams.slice(0, teamCount).map((t, i) => ({
+    const selectedTeams: Team[] = teams.slice(0, teamCount).map((team, i) => ({
       id: `team-${i + 1}`,
-      name: t.name,
-      color: t.color,
+      name: team.name,
+      color: team.color,
       finishedCount: 0,
       pieces: Array.from({ length: 4 }).map((_, j) => ({
         id: `t${i + 1}-p${j}`,
@@ -85,7 +88,7 @@ const HostLobby: React.FC<HostLobbyProps> = ({
     return teams
       .slice(0, teamCount)
       .filter((_, i) => i !== exceptIndex)
-      .map(t => t.color);
+      .map(team => team.color);
   };
 
   const players: Player[] = room?.players ? Object.values(room.players) : [];
@@ -96,10 +99,10 @@ const HostLobby: React.FC<HostLobbyProps> = ({
   const canStartGame = players.length > 0 && players.every(p => Number(p.teamIndex) >= 0);
 
   const handleStartGame = () => {
-    const selectedTeams: Team[] = teams.slice(0, teamCount).map((t, i) => ({
+    const selectedTeams: Team[] = teams.slice(0, teamCount).map((team, i) => ({
       id: `team-${i + 1}`,
-      name: t.name,
-      color: t.color,
+      name: team.name,
+      color: team.color,
       finishedCount: 0,
       pieces: Array.from({ length: 4 }).map((_, j) => ({
         id: `t${i + 1}-p${j}`,
@@ -120,13 +123,13 @@ const HostLobby: React.FC<HostLobbyProps> = ({
       <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-stone-100">
         <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-lg w-full">
           <h1 className="text-2xl font-black text-center text-stone-800 mb-6">
-            멀티플레이어 게임 설정
+            {t.multiplayerSetup}
           </h1>
 
           {/* 팀 수 선택 */}
           <div className="mb-6">
             <label className="block text-sm font-bold text-stone-600 mb-3">
-              참가 팀 수
+              {t.teamCount}
             </label>
             <div className="flex gap-2">
               {[2, 3, 4].map(count => (
@@ -139,7 +142,7 @@ const HostLobby: React.FC<HostLobbyProps> = ({
                       : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                   }`}
                 >
-                  {count}팀
+                  {count}
                 </button>
               ))}
             </div>
@@ -148,7 +151,7 @@ const HostLobby: React.FC<HostLobbyProps> = ({
           {/* 팀 설정 */}
           <div className="space-y-3 mb-6">
             <label className="block text-sm font-bold text-stone-600">
-              팀 설정
+              {t.teamSettings}
             </label>
             {teams.slice(0, teamCount).map((team, index) => (
               <div
@@ -196,14 +199,14 @@ const HostLobby: React.FC<HostLobbyProps> = ({
               onClick={onClose}
               className="flex-1 py-3 bg-stone-100 text-stone-600 font-bold rounded-xl hover:bg-stone-200"
             >
-              취소
+              {t.cancel}
             </button>
             <button
               onClick={handleCreateRoom}
               disabled={loading}
               className="flex-1 py-3 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600 disabled:opacity-50"
             >
-              {loading ? '생성 중...' : '방 만들기'}
+              {loading ? t.creating : t.createRoom}
             </button>
           </div>
         </div>
@@ -216,19 +219,19 @@ const HostLobby: React.FC<HostLobbyProps> = ({
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-stone-100">
       <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-lg w-full">
         <h1 className="text-2xl font-black text-center text-stone-800 mb-2">
-          대기실
+          {t.lobby}
         </h1>
 
         {/* 룸 코드 */}
         <div className="bg-stone-800 text-white rounded-2xl p-6 mb-6 text-center">
-          <p className="text-sm text-stone-400 mb-2">참가 코드</p>
+          <p className="text-sm text-stone-400 mb-2">{t.joinCode}</p>
           <p className="text-4xl font-black tracking-widest">{roomCode}</p>
-          <p className="text-xs text-stone-400 mt-2">참가자에게 이 코드를 알려주세요</p>
+          <p className="text-xs text-stone-400 mt-2">{t.shareCode}</p>
         </div>
 
         {/* 팀별 참가자 목록 */}
         <div className="space-y-3 mb-6">
-          <p className="text-sm font-bold text-stone-600">참가자 ({players.length}명)</p>
+          <p className="text-sm font-bold text-stone-600">{t.participants} ({players.length})</p>
           {teams.slice(0, teamCount).map((team, teamIdx) => (
             <div
               key={teamIdx}
@@ -251,11 +254,11 @@ const HostLobby: React.FC<HostLobbyProps> = ({
                       className="px-2 py-1 bg-white rounded-lg text-xs font-medium border"
                     >
                       {player.name}
-                      {!player.connected && <span className="text-red-500 ml-1">(연결 끊김)</span>}
+                      {!player.connected && <span className="text-red-500 ml-1">(offline)</span>}
                     </span>
                   ))
                 ) : (
-                  <span className="text-xs text-stone-400">대기 중...</span>
+                  <span className="text-xs text-stone-400">{t.waiting}...</span>
                 )}
               </div>
             </div>
@@ -264,7 +267,7 @@ const HostLobby: React.FC<HostLobbyProps> = ({
           {/* 미배정 참가자 */}
           {players.filter(p => Number(p.teamIndex) < 0).length > 0 && (
             <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
-              <p className="text-xs text-amber-600 mb-2">팀 선택 대기 중</p>
+              <p className="text-xs text-amber-600 mb-2">{t.waitingForTeam}</p>
               <div className="flex flex-wrap gap-2">
                 {players.filter(p => Number(p.teamIndex) < 0).map(player => (
                   <span
@@ -290,22 +293,22 @@ const HostLobby: React.FC<HostLobbyProps> = ({
             onClick={onClose}
             className="flex-1 py-3 bg-stone-100 text-stone-600 font-bold rounded-xl hover:bg-stone-200"
           >
-            방 닫기
+            {t.closeRoom}
           </button>
           <button
             onClick={handleStartGame}
             disabled={!canStartGame}
             className="flex-1 py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            게임 시작
+            {t.startGame}
           </button>
         </div>
 
         {!canStartGame && (
           <p className="text-xs text-center text-stone-400 mt-3">
             {players.length === 0
-              ? '참가자가 없습니다. 참가자를 기다려주세요.'
-              : `${players.filter(p => Number(p.teamIndex) < 0).length}명이 팀을 선택하지 않았습니다.`
+              ? t.noParticipants
+              : `${players.filter(p => Number(p.teamIndex) < 0).length}${t.selectTeamRequired}`
             }
           </p>
         )}

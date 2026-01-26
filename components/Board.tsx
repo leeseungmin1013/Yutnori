@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { GameState, YutResult, Piece } from '../types';
 import { BOARD_NODES } from '../boardData';
 import { canPieceMove } from '../gameEngine';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getYutResultLabel } from '../i18n';
 
 interface BoardProps {
   gameState: GameState;
@@ -10,20 +12,8 @@ interface BoardProps {
   onSkipResult?: (result: YutResult) => void;
 }
 
-// 윷 결과를 한글로 표시
-const getYutResultLabel = (result: YutResult): string => {
-  switch (result) {
-    case YutResult.DO: return '도';
-    case YutResult.GAE: return '개';
-    case YutResult.GEOL: return '걸';
-    case YutResult.YUT: return '윷';
-    case YutResult.MO: return '모';
-    case YutResult.BACK_DO: return '빽도';
-    default: return result;
-  }
-};
-
 const Board: React.FC<BoardProps> = ({ gameState, onPieceMove, onSkipResult }) => {
+  const { lang, t } = useLanguage();
   const currentTeam = gameState.teams[gameState.currentTeamIndex];
   const resultsAvailable = gameState.throwBuffer || [];
 
@@ -202,7 +192,7 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove, onSkipResult }) =
 
           return (
             <div key={team.id} className="flex flex-col items-center gap-2">
-              <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">{team.name} 대기</span>
+              <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">{team.name} {t.waiting}</span>
               <div className="flex gap-2 bg-white/70 p-3 rounded-xl border border-stone-200 shadow-sm">
                 {waitingPieces.length > 0 ? waitingPieces.map(p => {
                   const movableResults = getMovableResults(p);
@@ -223,7 +213,7 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove, onSkipResult }) =
                 )}
               </div>
               <span className="text-[10px] text-stone-400">
-                완주: {team.finishedCount}/4
+                {t.finished}: {team.finishedCount}/4
               </span>
             </div>
           );
@@ -234,7 +224,7 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove, onSkipResult }) =
       {skippableResults.length > 0 && onSkipResult && (
         <div className="absolute -bottom-32 left-0 right-0 flex justify-center">
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col items-center gap-2">
-            <p className="text-xs text-amber-700">이동 가능한 말이 없습니다:</p>
+            <p className="text-xs text-amber-700">{t.noMovablePiece}</p>
             <div className="flex gap-2">
               {skippableResults.map((result, idx) => (
                 <button
@@ -242,7 +232,7 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove, onSkipResult }) =
                   onClick={() => onSkipResult(result)}
                   className="px-3 py-1 bg-amber-500 text-white rounded-lg text-sm font-bold hover:bg-amber-600"
                 >
-                  {getYutResultLabel(result)} 스킵
+                  {getYutResultLabel(result, lang)} {t.skip}
                 </button>
               ))}
             </div>
@@ -260,7 +250,7 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove, onSkipResult }) =
             className="bg-white rounded-2xl p-6 shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-center mb-4 text-stone-700">어떤 결과를 사용할까요?</h3>
+            <h3 className="text-lg font-bold text-center mb-4 text-stone-700">{t.selectResult}</h3>
             <div className="flex gap-3 flex-wrap justify-center">
               {getMovableResults(selectedPiece).map((result, idx) => (
                 <button
@@ -268,7 +258,7 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove, onSkipResult }) =
                   onClick={() => handleResultSelect(result)}
                   className="px-5 py-3 bg-stone-800 text-white rounded-xl font-bold hover:bg-stone-700 active:scale-95 transition-all shadow-lg"
                 >
-                  {getYutResultLabel(result)}
+                  {getYutResultLabel(result, lang)}
                 </button>
               ))}
             </div>
@@ -276,7 +266,7 @@ const Board: React.FC<BoardProps> = ({ gameState, onPieceMove, onSkipResult }) =
               onClick={closeModal}
               className="mt-4 w-full text-sm text-stone-400 hover:text-stone-600"
             >
-              취소
+              {t.cancel}
             </button>
           </div>
         </div>
