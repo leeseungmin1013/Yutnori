@@ -8,6 +8,7 @@ interface ClientJoinProps {
   playerId: string;
   loading: boolean;
   error: string | null;
+  initialCode?: string;
   onJoin: (roomCode: string, playerName: string) => Promise<boolean>;
   onSelectTeam: (teamIndex: number) => Promise<void>;
   onLeave: () => void;
@@ -19,13 +20,14 @@ const ClientJoin: React.FC<ClientJoinProps> = ({
   playerId,
   loading,
   error,
+  initialCode = '',
   onJoin,
   onSelectTeam,
   onLeave,
   onReady
 }) => {
   const { t } = useLanguage();
-  const [roomCode, setRoomCode] = useState('');
+  const [roomCode, setRoomCode] = useState(initialCode);
   const [playerName, setPlayerName] = useState('');
   const [isJoined, setIsJoined] = useState(false);
 

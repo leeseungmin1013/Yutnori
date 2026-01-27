@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Team, Room, Player } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -222,11 +223,24 @@ const HostLobby: React.FC<HostLobbyProps> = ({
           {t.lobby}
         </h1>
 
-        {/* 룸 코드 */}
-        <div className="bg-stone-800 text-white rounded-2xl p-6 mb-6 text-center">
-          <p className="text-sm text-stone-400 mb-2">{t.joinCode}</p>
-          <p className="text-4xl font-black tracking-widest">{roomCode}</p>
-          <p className="text-xs text-stone-400 mt-2">{t.shareCode}</p>
+        {/* 룸 코드 + QR 코드 */}
+        <div className="bg-stone-800 text-white rounded-2xl p-6 mb-6">
+          <div className="flex items-center gap-4">
+            {/* QR 코드 */}
+            <div className="bg-white p-2 rounded-xl flex-shrink-0">
+              <QRCodeSVG
+                value={`${window.location.origin}${window.location.pathname}?join=${roomCode}`}
+                size={100}
+                level="M"
+              />
+            </div>
+            {/* 코드 정보 */}
+            <div className="flex-1 text-center">
+              <p className="text-sm text-stone-400 mb-1">{t.joinCode}</p>
+              <p className="text-3xl font-black tracking-widest">{roomCode}</p>
+              <p className="text-xs text-stone-400 mt-2">{t.scanQR}</p>
+            </div>
+          </div>
         </div>
 
         {/* 팀별 참가자 목록 */}

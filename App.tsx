@@ -20,8 +20,17 @@ type AppPhase = 'mode-select' | 'setup' | 'host-lobby' | 'client-join' | 'client
 
 
 const App: React.FC = () => {
-  const [gameMode, setGameMode] = useState<GameMode>('local');
-  const [appPhase, setAppPhase] = useState<AppPhase>('mode-select');
+  // URL 파라미터에서 join 코드 확인
+  const getInitialJoinCode = (): string => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('join')?.toUpperCase() || '';
+  };
+
+  const initialJoinCode = getInitialJoinCode();
+
+  const [gameMode, setGameMode] = useState<GameMode>(initialJoinCode ? 'client' : 'local');
+  const [appPhase, setAppPhase] = useState<AppPhase>(initialJoinCode ? 'client-join' : 'mode-select');
+  const [joinCode, setJoinCode] = useState<string>(initialJoinCode);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,6 +39,14 @@ const App: React.FC = () => {
 
   const firebase = useFirebaseRoom();
   const { lang, t } = useLanguage();
+
+  // URL 파라미터 정리 (뒤로가기 시)
+  const clearUrlParams = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('join');
+    window.history.replaceState({}, '', url.pathname);
+    setJoinCode('');
+  };
 
   // Firebase 룸 상태 변경 감지 (호스트)
   useEffect(() => {
@@ -325,6 +342,7 @@ const App: React.FC = () => {
     } else if (gameMode === 'client') {
       firebase.leaveRoom();
     }
+    clearUrlParams();
     setAppPhase('mode-select');
     setGameMode('local');
     setGameState(null);
@@ -386,6 +404,7 @@ const App: React.FC = () => {
           playerId={firebase.playerId}
           loading={firebase.loading}
           error={firebase.error}
+          initialCode={joinCode}
           onJoin={handleClientJoin}
           onSelectTeam={firebase.selectTeam}
           onLeave={handleBack}
