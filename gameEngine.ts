@@ -31,6 +31,11 @@ export const calculateMove = (
   updatedGameState: GameState;
   caughtEnemy: boolean;
   isFinished: boolean;
+  catchInfo?: {
+    predatorTeamId: string;
+    preyTeamId: string;
+    preyCount: number;
+  };
 } => {
   const distance = getYutDistance(yutResult);
 
@@ -49,6 +54,7 @@ export const calculateMove = (
 
   let caughtEnemy = false;
   let isFinished = false;
+  let catchInfo: { predatorTeamId: string; preyTeamId: string; preyCount: number } | undefined;
 
   let currentNodeId = movingPiece.nodeIndex;
   let currentPath = movingPiece.currentPath;
@@ -149,6 +155,11 @@ export const calculateMove = (
           p.currentPath = 'outer';
         });
         caughtEnemy = true;
+        catchInfo = {
+          predatorTeamId: currentTeam.id,
+          preyTeamId: team.id,
+          preyCount: enemiesAtNode.length
+        };
         newState.logs.push(`${currentTeam.name} 팀이 ${team.name} 팀의 말 ${enemiesAtNode.length}개를 잡았습니다! 한 번 더 던지세요!`);
         break;
       }
@@ -178,7 +189,7 @@ export const calculateMove = (
     }
   }
 
-  return { updatedGameState: newState, caughtEnemy, isFinished };
+  return { updatedGameState: newState, caughtEnemy, isFinished, catchInfo };
 };
 
 /**

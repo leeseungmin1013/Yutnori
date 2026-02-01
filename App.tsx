@@ -12,6 +12,9 @@ import HostLobby from './components/HostLobby';
 import ClientJoin from './components/ClientJoin';
 import ClientController from './components/ClientController';
 import TopBar from './components/TopBar';
+import ThrowingScene from './components/ThrowingScene';
+import CatchEffectOverlay from './components/CatchEffectOverlay';
+import soundManager from './utils/SoundManager';
 import { useFirebaseRoom } from './hooks/useFirebaseRoom';
 import { useLanguage } from './contexts/LanguageContext';
 import { getYutResultLabel } from './i18n';
@@ -36,6 +39,9 @@ const App: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [canThrowAgain, setCanThrowAgain] = useState(false);
   const [effectResult, setEffectResult] = useState<YutResult | null>(null);
+  const [isThrowingAnimation, setIsThrowingAnimation] = useState(false);
+  const [pendingThrowResult, setPendingThrowResult] = useState<{ result: YutResult; sticks: boolean[] } | null>(null);
+  const [catchEffect, setCatchEffect] = useState<{ predatorTeamId: string; preyTeamId: string; count: number } | null>(null);
 
   const firebase = useFirebaseRoom();
   const { lang, t } = useLanguage();
@@ -183,7 +189,7 @@ const App: React.FC = () => {
 
   // 로컬 던지기
   const handleLocalThrow = () => {
-    if (!gameState || gameState.isGameOver || isSubmitting) return;
+    if (!gameState || gameState.isGameOver || isSubmitting || isThrowingAnimation) return;
 
     const bufferLength = gameState.throwBuffer?.length ?? 0;
     const canThrow = bufferLength === 0 || canThrowAgain;
@@ -192,11 +198,20 @@ const App: React.FC = () => {
     setIsSubmitting(true);
     setCanThrowAgain(false);
 
-    setTimeout(() => {
-      const { result } = throwYut();
-      handleThrowResult(result);
-    }, 300);
+    // 윷 던지기 결과 생성
+    const throwResult = throwYut();
+    setPendingThrowResult(throwResult);
+    setIsThrowingAnimation(true);
   };
+
+  // 던지기 애니메이션 완료 핸들러
+  const handleThrowAnimationComplete = useCallback(() => {
+    if (pendingThrowResult) {
+      setIsThrowingAnimation(false);
+      handleThrowResult(pendingThrowResult.result);
+      setPendingThrowResult(null);
+    }
+  }, [pendingThrowResult, handleThrowResult]);
 
   // 특정 결과로 이동 가능한 말이 있는지 확인
   const hasMovablePiece = useCallback((result: YutResult): boolean => {
@@ -253,7 +268,15 @@ const App: React.FC = () => {
       return;
     }
 
-    const { updatedGameState, caughtEnemy } = calculateMove(gameState, pieceId, result);
+    const { updatedGameState, caughtEnemy, isFinished, catchInfo } = calculateMove(gameState, pieceId, result);
+
+    // 말 이동 사운드
+    soundManager.play('move');
+
+    // 골인 사운드
+    if (isFinished) {
+      setTimeout(() => soundManager.play('goal'), 300);
+    }
 
     const newBuffer = [...(updatedGameState.throwBuffer || [])];
     const resultIndex = newBuffer.indexOf(result);
@@ -265,6 +288,14 @@ const App: React.FC = () => {
 
     if (caughtEnemy) {
       setCanThrowAgain(true);
+      // 잡기 이펙트 표시
+      if (catchInfo) {
+        setCatchEffect({
+          predatorTeamId: catchInfo.predatorTeamId,
+          preyTeamId: catchInfo.preyTeamId,
+          count: catchInfo.preyCount
+        });
+      }
     }
 
     if (newBuffer.length === 0 && !caughtEnemy && !canThrowAgain) {
@@ -291,7 +322,7 @@ const App: React.FC = () => {
         if (needsThrow) {
           firebase.requestThrow(nextTeamIndex);
         } else {
-           firebase.requestThrow((nextTeamIndex + 1) % newState.teams.length);
+          firebase.requestThrow((nextTeamIndex + 1) % newState.teams.length);
         }
       }
     }
@@ -350,7 +381,7 @@ const App: React.FC = () => {
   };
 
   // 던지기 가능 여부
-  const canThrow = gameState && !gameState.isGameOver && !isSubmitting && (
+  const canThrow = gameState && !gameState.isGameOver && !isSubmitting && !isThrowingAnimation && (
     (gameState.throwBuffer?.length ?? 0) === 0 || canThrowAgain
   );
 
@@ -437,6 +468,34 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 gap-6">
         <TopBar />
+
+        {/* 윷 던지기 애니메이션 */}
+        {isThrowingAnimation && pendingThrowResult && (
+          <ThrowingScene
+            targetSticks={pendingThrowResult.sticks}
+            result={pendingThrowResult.result}
+            teamColor={currentTeam.color}
+            onComplete={handleThrowAnimationComplete}
+          />
+        )}
+
+        {/* 잡기 이펙트 */}
+        {catchEffect && gameState && (() => {
+          const predatorTeam = gameState.teams.find(t => t.id === catchEffect.predatorTeamId);
+          const preyTeam = gameState.teams.find(t => t.id === catchEffect.preyTeamId);
+          if (predatorTeam && preyTeam) {
+            return (
+              <CatchEffectOverlay
+                predatorTeam={predatorTeam}
+                preyTeam={preyTeam}
+                count={catchEffect.count}
+                onComplete={() => setCatchEffect(null)}
+              />
+            );
+          }
+          return null;
+        })()}
+
         {/* 결과 이펙트 */}
         {effectResult && (
           <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none overflow-hidden">
@@ -547,11 +606,10 @@ const App: React.FC = () => {
                 {gameState.teams.map((team, idx) => (
                   <div
                     key={team.id}
-                    className={`p-3 rounded-xl border-2 transition-all ${
-                      gameState.currentTeamIndex === idx
-                        ? 'border-stone-800 bg-stone-50 scale-105 shadow-md'
-                        : 'border-transparent opacity-60'
-                    }`}
+                    className={`p-3 rounded-xl border-2 transition-all ${gameState.currentTeamIndex === idx
+                      ? 'border-stone-800 bg-stone-50 scale-105 shadow-md'
+                      : 'border-transparent opacity-60'
+                      }`}
                   >
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-bold flex items-center gap-2" style={{ color: team.color }}>

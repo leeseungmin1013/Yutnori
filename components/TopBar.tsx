@@ -1,14 +1,59 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useFullscreen } from '../hooks/useFullscreen';
+import soundManager from '../utils/SoundManager';
 
 const TopBar: React.FC = () => {
   const { lang, toggleLanguage } = useLanguage();
   const { isFullscreen, toggleFullscreen } = useFullscreen();
+  const [isMuted, setIsMuted] = useState(soundManager.getMuted());
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // 첫 인터랙션 시 사운드 초기화
+  const initSound = () => {
+    if (!isInitialized) {
+      soundManager.init();
+      setIsInitialized(true);
+      if (!soundManager.getMuted()) {
+        soundManager.playBGM();
+      }
+    }
+  };
+
+  useEffect(() => {
+    // 페이지 클릭 시 초기화
+    const handleClick = () => initSound();
+    document.addEventListener('click', handleClick, { once: true });
+    return () => document.removeEventListener('click', handleClick);
+  }, [isInitialized]);
+
+  const handleToggleMute = () => {
+    initSound();
+    const newMuted = soundManager.toggleMute();
+    setIsMuted(newMuted);
+  };
 
   return (
     <div className="fixed top-4 right-4 z-40 flex items-center gap-2">
+      {/* 사운드 토글 */}
+      <button
+        onClick={handleToggleMute}
+        className="flex items-center justify-center w-10 h-10 bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-stone-200 hover:bg-stone-50 transition-all"
+        title={isMuted ? 'Sound On' : 'Sound Off'}
+      >
+        {isMuted ? (
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-stone-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-stone-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+        )}
+      </button>
+
       {/* 언어 토글 */}
       <button
         onClick={toggleLanguage}
