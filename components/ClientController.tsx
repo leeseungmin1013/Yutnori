@@ -1,22 +1,20 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Room, YutResult } from '../types';
+import { Room } from '../types';
 import { useMotionDetector } from '../hooks/useMotionDetector';
-import { throwYut } from '../yutLogic';
 import { useLanguage } from '../contexts/LanguageContext';
-import { getYutResultLabel } from '../i18n';
 
 interface ClientControllerProps {
   room: Room;
   playerId: string;
-  onSubmitResult: (result: YutResult) => Promise<void>;
+  onSubmitSignal: (teamIndex: number) => Promise<void>;
   onLeave: () => void;
 }
 
 const ClientController: React.FC<ClientControllerProps> = ({
   room,
   playerId,
-  onSubmitResult,
+  onSubmitSignal,
   onLeave
 }) => {
   const { lang, t } = useLanguage();
@@ -24,56 +22,64 @@ const ClientController: React.FC<ClientControllerProps> = ({
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [throwMode, setThrowMode] = useState<'motion' | 'button'>('button');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [effectResult, setEffectResult] = useState<YutResult | null>(null);
 
   const currentPlayer = room.players?.[playerId];
   const myTeamIndex = currentPlayer?.teamIndex ?? -1;
   const throwRequest = room.throwRequest;
 
-  // 내 차례인지 확인
+  // 내 차례인지 확인 (throwRequest가 있고 내 팀 인덱스와 일치할 때만)
   useEffect(() => {
-    if (throwRequest && throwRequest.teamIndex === myTeamIndex) {
+    const isCurrentlyMyTurn = throwRequest &&
+                              throwRequest.teamIndex === myTeamIndex &&
+                              myTeamIndex >= 0;
+
+    if (isCurrentlyMyTurn && !isMyTurn) {
+      // 새로운 턴 시작
       setIsMyTurn(true);
-    } else {
+      setIsSubmitting(false);
+    } else if (!isCurrentlyMyTurn && isMyTurn) {
+      // 턴 종료
       setIsMyTurn(false);
     }
-  }, [throwRequest, myTeamIndex]);
+  }, [throwRequest, myTeamIndex, isMyTurn]);
 
-  // 모션 감지 결과 처리
+  // 모션 감지 시 신호 전송
   useEffect(() => {
-    onThrowDetected((result) => {
-      handleThrowResult(result);
+    onThrowDetected(() => {
+      handleSubmitSignal();
     });
-  }, [onThrowDetected]);
+  }, [onThrowDetected, myTeamIndex]);
 
-  const handleThrowResult = useCallback(async (result: YutResult) => {
+  // 신호 전송 (호스트가 실제 결과 생성)
+  const handleSubmitSignal = useCallback(async () => {
+    // 내 턴이 아니거나 이미 전송 중이면 무시
+    if (!isMyTurn || isSubmitting || myTeamIndex < 0) {
+      console.warn('Cannot submit signal: not my turn or already submitting');
+      return;
+    }
+
+    // throwRequest가 없거나 내 팀이 아니면 무시
+    if (!throwRequest || throwRequest.teamIndex !== myTeamIndex) {
+      console.warn('Cannot submit signal: no throw request for my team');
+      return;
+    }
+
     setIsSubmitting(true);
-    setEffectResult(result);
+    stopDetecting();
 
-    // 이펙트 표시 후 결과 전송 및 이펙트 숨김
-    setTimeout(async () => {
-      await onSubmitResult(result);
+    try {
+      await onSubmitSignal(myTeamIndex);
       setIsMyTurn(false);
+    } catch (err) {
+      console.error('Signal submit failed:', err);
       setIsSubmitting(false);
-    }, 1800);
-
-    setTimeout(() => {
-      setEffectResult(null);
-    }, 1600);
-  }, [onSubmitResult]);
+    }
+  }, [onSubmitSignal, myTeamIndex, isSubmitting, stopDetecting, isMyTurn, throwRequest]);
 
   // 버튼으로 던지기
   const handleButtonThrow = () => {
     if (!isMyTurn || isSubmitting) return;
-
-    // 즉시 버튼 비활성화
-    setIsSubmitting(true);
-
-    // 약간의 딜레이 후 결과 생성
-    setTimeout(() => {
-      const { result } = throwYut();
-      handleThrowResult(result);
-    }, 300);
+    handleSubmitSignal();
   };
 
   // 모션으로 던지기 시작
@@ -95,34 +101,8 @@ const ClientController: React.FC<ClientControllerProps> = ({
   const myTeam = teamSettings[myTeamIndex];
   const currentTurnTeam = room.gameState?.teams?.[room.gameState.currentTeamIndex];
 
-  const isSpecialResult = effectResult === YutResult.YUT || effectResult === YutResult.MO;
-
   return (
     <div className="min-h-screen flex flex-col bg-stone-100">
-      {/* 결과 이펙트 */}
-      {effectResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm pointer-events-none">
-          <div className="relative text-center">
-            {isSpecialResult && (
-              <div className="absolute -inset-10 flex items-center justify-center">
-                <span className="text-7xl animate-[spin_3s_linear_infinite]">🎉</span>
-                <span className="text-7xl animate-[spin_3s_linear_infinite_reverse]">🎊</span>
-              </div>
-            )}
-            <h1
-              className="text-9xl font-black text-white transition-all duration-500 animate-[zoom-in-out_1.6s_cubic-bezier(0.25,1,0.5,1)]"
-              style={{
-                WebkitTextStroke: '4px black',
-                textShadow: '0 0 30px rgba(0,0,0,0.5)',
-                color: isSpecialResult ? 'yellow' : 'white',
-              }}
-            >
-              {getYutResultLabel(effectResult, lang)}
-            </h1>
-          </div>
-        </div>
-      )}
-
       {/* 헤더 */}
       <div className="bg-white p-4 shadow-md">
         <div className="flex justify-between items-center">

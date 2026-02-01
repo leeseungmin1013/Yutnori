@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { database, ref, set, get, onValue, update, remove, generateRoomCode, generatePlayerId, onDisconnect } from '../firebase';
-import { Room, Player, GameState, ThrowRequest, ThrowResultMessage, YutResult, Team } from '../types';
+import { Room, Player, GameState, ThrowRequest, ThrowSignal, Team } from '../types';
 
 interface UseFirebaseRoomReturn {
   // 상태
@@ -17,15 +17,13 @@ interface UseFirebaseRoomReturn {
   requestThrow: (teamIndex: number) => Promise<void>;
   updateGameState: (gameState: GameState) => Promise<void>;
   closeRoom: () => Promise<void>;
+  clearThrowSignal: () => Promise<void>;
 
   // 클라이언트 액션
   joinRoom: (roomCode: string, playerName: string) => Promise<boolean>;
   selectTeam: (teamIndex: number) => Promise<void>;
-  submitThrowResult: (result: YutResult) => Promise<void>;
+  submitThrowSignal: (teamIndex: number) => Promise<void>;
   leaveRoom: () => Promise<void>;
-
-  // 공통
-  clearThrowResult: () => Promise<void>;
 }
 
 export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
@@ -59,6 +57,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
           players: data.players || {},
           throwRequest: data.throwRequest || null,
           throwResult: data.throwResult || null,
+          throwSignal: data.throwSignal || null,
           teamSettings: data.teamSettings || [],
           createdAt: data.createdAt
         });
@@ -213,21 +212,19 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     }
   }, [roomCode, isHost]);
 
-  // 클라이언트: 던지기 결과 전송
-  const submitThrowResult = useCallback(async (result: YutResult): Promise<void> => {
+  // 클라이언트: 던지기 신호 전송 (결과는 호스트가 생성)
+  const submitThrowSignal = useCallback(async (teamIndex: number): Promise<void> => {
     if (!roomCode) return;
 
     try {
-      const throwResult: ThrowResultMessage = {
-        result,
+      const throwSignal: ThrowSignal = {
         playerId,
+        teamIndex,
         timestamp: Date.now()
       };
-      await set(ref(database, `rooms/${roomCode}/throwResult`), throwResult);
-      // 요청 초기화
-      await remove(ref(database, `rooms/${roomCode}/throwRequest`));
+      await set(ref(database, `rooms/${roomCode}/throwSignal`), throwSignal);
     } catch (err: any) {
-      setError('결과 전송 실패: ' + err.message);
+      setError('신호 전송 실패: ' + err.message);
     }
   }, [roomCode, playerId]);
 
@@ -245,14 +242,15 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     }
   }, [roomCode, isHost]);
 
-  // 결과 초기화
-  const clearThrowResult = useCallback(async (): Promise<void> => {
+  // 호스트: 던지기 신호 초기화
+  const clearThrowSignal = useCallback(async (): Promise<void> => {
     if (!roomCode) return;
 
     try {
-      await remove(ref(database, `rooms/${roomCode}/throwResult`));
+      await remove(ref(database, `rooms/${roomCode}/throwSignal`));
+      await remove(ref(database, `rooms/${roomCode}/throwRequest`));
     } catch (err: any) {
-      setError('초기화 실패: ' + err.message);
+      setError('신호 초기화 실패: ' + err.message);
     }
   }, [roomCode]);
 
@@ -294,10 +292,10 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     requestThrow,
     updateGameState,
     closeRoom,
+    clearThrowSignal,
     joinRoom,
     selectTeam,
-    submitThrowResult,
-    leaveRoom,
-    clearThrowResult
+    submitThrowSignal,
+    leaveRoom
   };
 };

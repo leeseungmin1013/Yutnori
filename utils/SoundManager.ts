@@ -31,17 +31,22 @@ class SoundManager {
   private static instance: SoundManager;
   private sounds: Map<SoundName, HTMLAudioElement> = new Map();
   private bgmElement: HTMLAudioElement | null = null;
-  private isMuted: boolean = false;
+  private isBgmMuted: boolean = false;
+  private isSfxMuted: boolean = false;
   private masterVolume: number = 1.0;
   private isInitialized: boolean = false;
 
   private constructor() {
     // 로컬 스토리지에서 설정 복원
-    const savedMuted = localStorage.getItem('yutnori_muted');
+    const savedBgmMuted = localStorage.getItem('yutnori_bgm_muted');
+    const savedSfxMuted = localStorage.getItem('yutnori_sfx_muted');
     const savedVolume = localStorage.getItem('yutnori_volume');
 
-    if (savedMuted !== null) {
-      this.isMuted = savedMuted === 'true';
+    if (savedBgmMuted !== null) {
+      this.isBgmMuted = savedBgmMuted === 'true';
+    }
+    if (savedSfxMuted !== null) {
+      this.isSfxMuted = savedSfxMuted === 'true';
     }
     if (savedVolume !== null) {
       this.masterVolume = parseFloat(savedVolume);
@@ -87,7 +92,7 @@ class SoundManager {
    * 사운드 재생
    */
   public play(soundName: SoundName): void {
-    if (this.isMuted || !this.isInitialized) return;
+    if (!this.isInitialized) return;
 
     const audio = this.sounds.get(soundName);
     if (!audio) return;
@@ -97,6 +102,9 @@ class SoundManager {
       this.playBGM();
       return;
     }
+
+    // SFX: 음소거 상태면 재생하지 않음
+    if (this.isSfxMuted) return;
 
     // SFX: 새 인스턴스로 재생 (중복 재생 허용)
     const sfx = audio.cloneNode() as HTMLAudioElement;
@@ -110,7 +118,7 @@ class SoundManager {
    * BGM 재생
    */
   public playBGM(): void {
-    if (!this.bgmElement || this.isMuted) return;
+    if (!this.bgmElement || this.isBgmMuted) return;
 
     this.bgmElement.play().catch(() => {
       // 자동 재생 제한으로 인한 에러 무시
@@ -143,13 +151,13 @@ class SoundManager {
   }
 
   /**
-   * 음소거 토글
+   * BGM 음소거 토글
    */
-  public toggleMute(): boolean {
-    this.isMuted = !this.isMuted;
-    localStorage.setItem('yutnori_muted', String(this.isMuted));
+  public toggleBgmMute(): boolean {
+    this.isBgmMuted = !this.isBgmMuted;
+    localStorage.setItem('yutnori_bgm_muted', String(this.isBgmMuted));
 
-    if (this.isMuted) {
+    if (this.isBgmMuted) {
       // 음소거: BGM 일시정지
       if (this.bgmElement) {
         this.bgmElement.pause();
@@ -159,14 +167,30 @@ class SoundManager {
       this.playBGM();
     }
 
-    return this.isMuted;
+    return this.isBgmMuted;
   }
 
   /**
-   * 음소거 상태 확인
+   * SFX 음소거 토글
    */
-  public getMuted(): boolean {
-    return this.isMuted;
+  public toggleSfxMute(): boolean {
+    this.isSfxMuted = !this.isSfxMuted;
+    localStorage.setItem('yutnori_sfx_muted', String(this.isSfxMuted));
+    return this.isSfxMuted;
+  }
+
+  /**
+   * BGM 음소거 상태 확인
+   */
+  public getBgmMuted(): boolean {
+    return this.isBgmMuted;
+  }
+
+  /**
+   * SFX 음소거 상태 확인
+   */
+  public getSfxMuted(): boolean {
+    return this.isSfxMuted;
   }
 
   /**

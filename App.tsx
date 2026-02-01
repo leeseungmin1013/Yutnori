@@ -54,15 +54,38 @@ const App: React.FC = () => {
     setJoinCode('');
   };
 
-  // Firebase 룸 상태 변경 감지 (호스트)
+  // Firebase 룸 상태 변경 감지 (호스트) - 클라이언트 신호 수신 시 던지기 실행
   useEffect(() => {
-    if (gameMode === 'host' && firebase.room?.throwResult && gameState) {
-      // 클라이언트로부터 던지기 결과 수신
-      const result = firebase.room.throwResult.result;
-      handleThrowResult(result, true); // fromClient = true
-      firebase.clearThrowResult();
+    if (gameMode === 'host' && firebase.room?.throwSignal && gameState && !isThrowingAnimation && !isSubmitting) {
+      const signal = firebase.room.throwSignal;
+
+      // 현재 턴인 팀의 신호인지 검증
+      if (signal.teamIndex !== gameState.currentTeamIndex) {
+        console.warn('Invalid throw signal: not current team turn', signal.teamIndex, gameState.currentTeamIndex);
+        firebase.clearThrowSignal();
+        return;
+      }
+
+      // 던질 수 있는 상태인지 검증 (버퍼가 비어있거나 추가 던지기 가능)
+      const bufferLength = gameState.throwBuffer?.length ?? 0;
+      if (bufferLength > 0 && !canThrowAgain) {
+        console.warn('Invalid throw signal: cannot throw now');
+        firebase.clearThrowSignal();
+        return;
+      }
+
+      // 클라이언트로부터 던지기 신호 수신 -> 호스트에서 윷 던지기 실행
+      firebase.clearThrowSignal();
+
+      // 로컬 던지기와 동일하게 애니메이션 시작
+      setIsSubmitting(true);
+      setCanThrowAgain(false);
+
+      const throwResult = throwYut();
+      setPendingThrowResult(throwResult);
+      setIsThrowingAnimation(true);
     }
-  }, [firebase.room?.throwResult, gameMode]);
+  }, [firebase.room?.throwSignal, gameMode, gameState, isThrowingAnimation, isSubmitting, canThrowAgain]);
 
   // Firebase 게임 상태 동기화 (클라이언트)
   useEffect(() => {
@@ -138,9 +161,9 @@ const App: React.FC = () => {
     return await firebase.joinRoom(roomCode, playerName);
   };
 
-  // 클라이언트: 결과 제출
-  const handleClientSubmitResult = async (result: YutResult) => {
-    await firebase.submitThrowResult(result);
+  // 클라이언트: 던지기 신호 제출
+  const handleClientSubmitSignal = async (teamIndex: number) => {
+    await firebase.submitThrowSignal(teamIndex);
   };
 
   // 던지기 결과 처리 (호스트/로컬 공통)
@@ -317,13 +340,12 @@ const App: React.FC = () => {
     if (gameMode === 'host') {
       firebase.updateGameState(newState);
 
+      // 버퍼가 비었으면 다음 던지기 요청
+      // nextTeamIndex는 이미 올바르게 계산됨:
+      // - 잡기/추가턴: 현재 팀 유지
+      // - 일반 턴 종료: 다음 팀으로 변경됨
       if (!newState.isGameOver && newBuffer.length === 0) {
-        const needsThrow = canThrowAgain || caughtEnemy;
-        if (needsThrow) {
-          firebase.requestThrow(nextTeamIndex);
-        } else {
-          firebase.requestThrow((nextTeamIndex + 1) % newState.teams.length);
-        }
+        firebase.requestThrow(nextTeamIndex);
       }
     }
   };
@@ -453,7 +475,7 @@ const App: React.FC = () => {
         <ClientController
           room={firebase.room}
           playerId={firebase.playerId}
-          onSubmitResult={handleClientSubmitResult}
+          onSubmitSignal={handleClientSubmitSignal}
           onLeave={handleBack}
         />
       </>

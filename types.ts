@@ -74,6 +74,13 @@ export interface ThrowResultMessage {
   timestamp: number;
 }
 
+// 클라이언트가 "던졌다"는 신호 (결과는 호스트가 생성)
+export interface ThrowSignal {
+  playerId: string;
+  teamIndex: number;
+  timestamp: number;
+}
+
 export interface TeamSetting {
   name: string;
   color: string;
@@ -87,6 +94,7 @@ export interface Room {
   players: Record<string, Player>;
   throwRequest: ThrowRequest | null;
   throwResult: ThrowResultMessage | null;
+  throwSignal: ThrowSignal | null;  // 클라이언트 -> 호스트 신호
   teamSettings: TeamSetting[];
   createdAt: number;
 }
