@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import { database, ref, set, get, onValue, update, remove, generateRoomCode, generatePlayerId, onDisconnect } from '../firebase';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { auth, database, ref, set, get, onValue, update, remove, generateRoomCode, generatePlayerId, onDisconnect } from '../firebase';
 import { Room, Player, GameState, ThrowRequest, ThrowSignal, Team } from '../types';
 
 interface UseFirebaseRoomReturn {
@@ -40,10 +41,37 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
   const [isHost, setIsHost] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+
+  const ensureAuth = useCallback(async (): Promise<void> => {
+    if (auth.currentUser) {
+      if (!authReady) setAuthReady(true);
+      return;
+    }
+    try {
+      await signInAnonymously(auth);
+      setAuthReady(true);
+    } catch (err: any) {
+      setError('인증 실패: ' + err.message);
+      throw err;
+    }
+  }, [authReady]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthReady(!!user);
+      if (!user) {
+        signInAnonymously(auth).catch((err: any) => {
+          setError('인증 실패: ' + err.message);
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // 룸 상태 실시간 구독
   useEffect(() => {
-    if (!roomCode) return;
+    if (!roomCode || !authReady) return;
 
     const roomRef = ref(database, `rooms/${roomCode}`);
     const unsubscribe = onValue(roomRef, (snapshot) => {
@@ -71,7 +99,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     });
 
     return () => unsubscribe();
-  }, [roomCode]);
+  }, [roomCode, authReady]);
 
   // 호스트: 룸 생성
   const createRoom = useCallback(async (teams: Team[]): Promise<string> => {
@@ -79,6 +107,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     setError(null);
 
     try {
+      await ensureAuth();
       let code = generateRoomCode();
       let attempts = 0;
 
@@ -127,6 +156,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     setError(null);
 
     try {
+      await ensureAuth();
       const roomRef = ref(database, `rooms/${code}`);
       const snapshot = await get(roomRef);
 
@@ -175,6 +205,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     if (!roomCode) return;
 
     try {
+      await ensureAuth();
       await update(ref(database, `rooms/${roomCode}/players/${playerId}`), {
         teamIndex,
         lastSeen: Date.now()
@@ -189,6 +220,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     if (!roomCode || !isHost) return;
 
     try {
+      await ensureAuth();
       await update(ref(database, `rooms/${roomCode}`), {
         status: 'playing'
       });
@@ -202,6 +234,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     if (!roomCode || !isHost) return;
 
     try {
+      await ensureAuth();
       const request: ThrowRequest = {
         teamIndex,
         timestamp: Date.now()
@@ -217,6 +250,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     if (!roomCode) return;
 
     try {
+      await ensureAuth();
       const throwSignal: ThrowSignal = {
         playerId,
         teamIndex,
@@ -233,6 +267,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     if (!roomCode || !isHost) return;
 
     try {
+      await ensureAuth();
       await update(ref(database, `rooms/${roomCode}`), {
         gameState,
         status: gameState.isGameOver ? 'finished' : 'playing'
@@ -247,6 +282,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     if (!roomCode) return;
 
     try {
+      await ensureAuth();
       await remove(ref(database, `rooms/${roomCode}/throwSignal`));
       await remove(ref(database, `rooms/${roomCode}/throwRequest`));
     } catch (err: any) {
@@ -259,6 +295,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     if (!roomCode || !isHost) return;
 
     try {
+      await ensureAuth();
       await remove(ref(database, `rooms/${roomCode}`));
       setRoomCode(null);
       setRoom(null);
@@ -273,6 +310,7 @@ export const useFirebaseRoom = (): UseFirebaseRoomReturn => {
     if (!roomCode) return;
 
     try {
+      await ensureAuth();
       await remove(ref(database, `rooms/${roomCode}/players/${playerId}`));
       setRoomCode(null);
       setRoom(null);

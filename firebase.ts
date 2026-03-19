@@ -1,5 +1,6 @@
 
 import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import { getDatabase, ref, set, get, onValue, update, remove, push, onDisconnect } from 'firebase/database';
 
 // Firebase 설정 - 실제 사용 시 환경변수로 관리 권장
@@ -15,6 +16,7 @@ const firebaseConfig = {
 
 // Firebase 초기화
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const database = getDatabase(app);
 
 // 6자리 룸 코드 생성
@@ -32,4 +34,4 @@ export const generatePlayerId = (): string => {
   return `player_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 
-export { database, ref, set, get, onValue, update, remove, push, onDisconnect };
+export { auth, database, ref, set, get, onValue, update, remove, push, onDisconnect };
